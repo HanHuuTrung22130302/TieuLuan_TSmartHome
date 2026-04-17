@@ -1,16 +1,19 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
-import Auth from './pages/Auth'
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Auth from './pages/Auth';
+import ForgotPassword from './pages/ForgotPassword';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <Auth/>
-  )
+    <BrowserRouter>
+      <Routes>
+        {/* Trang mặc định sẽ là Đăng nhập/Đăng ký */}
+        <Route path="/" element={<Auth />} />
+        
+        {/* Trang quên mật khẩu */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
