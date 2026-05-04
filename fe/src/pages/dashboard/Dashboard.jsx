@@ -1,74 +1,8 @@
-import { useState, useEffect } from 'react';
 import { Thermometer, Droplets, Zap, Lightbulb, Fan, Bell } from 'lucide-react';
-import SmartHomeMap from './SmartHomeMap'; // Đường dẫn import tùy thư mục của bạn
 
 export default function Dashboard() {
-  // Trạng thái giả lập việc đang gọi API lấy dữ liệu từ Spring Boot
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Giả lập API delay 2 giây sau khi vào trang
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false); // Đã lấy xong dữ liệu, tắt loading
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // ==========================================
-  // GIAO DIỆN SKELETON (Khi đang tải dữ liệu)
-  // ==========================================
-  if (isLoading) {
-    return (
-      <div className="p-8 max-w-7xl mx-auto w-full">
-        {/* Skeleton Header */}
-        <div className="flex justify-between items-end mb-10 animate-pulse">
-          <div className="w-full">
-            <div className="h-4 bg-slate-200 rounded w-32 mb-3"></div>
-            <div className="h-8 bg-slate-200 rounded w-64"></div>
-          </div>
-          <div className="w-12 h-12 bg-slate-200 rounded-full"></div>
-        </div>
-
-        {/* Skeleton Quick Stats (3 thẻ) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {[1, 2, 3].map((item) => (
-            <div key={item} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-5 animate-pulse">
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl"></div>
-              <div className="flex-1">
-                <div className="h-4 bg-slate-100 rounded w-24 mb-3"></div>
-                <div className="h-8 bg-slate-100 rounded w-16"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Skeleton Devices */}
-        <div>
-          <div className="h-6 bg-slate-200 rounded w-48 mb-6 animate-pulse"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="bg-white p-5 h-36 rounded-3xl shadow-sm border border-slate-100 animate-pulse flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                  <div className="w-10 h-10 bg-slate-100 rounded-full"></div>
-                  <div className="w-11 h-6 bg-slate-100 rounded-full"></div>
-                </div>
-                <div>
-                  <div className="h-3 bg-slate-100 rounded w-20 mb-2"></div>
-                  <div className="h-5 bg-slate-100 rounded w-32"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================
-  // GIAO DIỆN THẬT (Khi đã có dữ liệu)
-  // ==========================================
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-in fade-in duration-700">
+    <div className="p-8 max-w-[1600px] mx-auto animate-in fade-in duration-500">
       
       {/* 1. HEADER */}
       <header className="flex justify-between items-end mb-10">
@@ -160,8 +94,6 @@ export default function Dashboard() {
 
         </div>
       </div>
-      {/* 4. DIGITAL TWIN (BẢN ĐỒ 2D) */}
-      <SmartHomeMap />
 
     </div>
   );

@@ -3,6 +3,8 @@ import Auth from './pages/Auth';
 import ForgotPassword from './pages/ForgotPassword';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './pages/dashboard/Dashboard'; // Đảm bảo đường dẫn này đúng
+import SmartHomeMap from './pages/map/SmartHomeMap';
+import SmartHomeMap3D from './pages/map/SmartHomeMap3D';
 
 // 1. Hàm kiểm tra xem đã có Token chưa (trong LocalStorage hoặc SessionStorage)
 const isAuthenticated = () => {
@@ -42,6 +44,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           {/* Các trang sau này của bạn như /rooms, /settings sẽ nằm ở đây */}
           <Route path="/map" element={<SmartHomeMap />} />
+          <Route path="/map3d" element={<SmartHomeMap3D />} />
         </Route>
 
         {/* ================= 404 CATCH-ALL ================= */}
