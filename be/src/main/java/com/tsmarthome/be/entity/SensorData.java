@@ -25,9 +25,6 @@ public class SensorData {
     @JoinColumn(name = "device_id")
     private Device device;
 
-    private Double temperature;
-    private Double humidity;
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> value;

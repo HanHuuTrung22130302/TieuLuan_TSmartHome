@@ -47,4 +47,16 @@ public class Device {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "label", length = 100)
+    private String label;
+
+    @Column(name = "icon", length = 50)
+    private String icon;
+
+    @Column(name = "pos_2d_x")
+    private Double pos2dX;
+
+    @Column(name = "pos_2d_y")
+    private Double pos2dY;
 }

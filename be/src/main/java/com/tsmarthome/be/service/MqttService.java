@@ -42,13 +42,11 @@ public class MqttService implements MqttCallback {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Khai báo các Repository để thao tác DB
     private final DeviceRepository deviceRepository;
     private final SensorDataRepository sensorDataRepository;
     private final DeviceStateRepository deviceStateRepository;
     private final DeviceLogRepository deviceLogRepository;
 
-    // Bộ nhớ đệm (Cache) để giảm tải truy vấn SELECT xuống Database
     private final Map<String, Device> deviceCache = new ConcurrentHashMap<>();
 
     @PostConstruct
@@ -84,11 +82,9 @@ public class MqttService implements MqttCallback {
             handleDeviceStatus(topic, data);
         }
 
-        // Đẩy dữ liệu lên WebSocket cho React cập nhật realtime
         messagingTemplate.convertAndSend("/topic/smarthome/realtime", (Object) data);
     }
 
-    // Hàm lấy thiết bị từ Cache, nếu chưa có thì tìm trong Database và lưu lại
     private Device getDeviceFromCache(String deviceName) {
         if (deviceCache.containsKey(deviceName)) {
             return deviceCache.get(deviceName);
@@ -103,7 +99,7 @@ public class MqttService implements MqttCallback {
         return device;
     }
 
-    // XỬ LÝ LƯU SENSOR DATA (Dữ liệu môi trường, an ninh)
+    // XỬ LÝ LƯU SENSOR DATA (Đã xóa bỏ logic bóc tách Nhiệt/Ẩm)
     @Transactional
     protected void handleSensorData(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -116,30 +112,14 @@ public class MqttService implements MqttCallback {
                 device.setIsFake((Boolean) data.get("isFake"));
             }
 
+            // Chỉ cần lưu toàn bộ cục JSON vào biến 'value' là xong
             SensorData sensorData = SensorData.builder()
                     .device(device)
-                    .value(data) // Lưu toàn bộ JSON gốc (gồm cả distance, angle, v.v.) vào cột JSONB
+                    .value(data)
                     .createdAt(extractTimestamp(data))
                     .build();
 
-            // 1. Tự động bóc tách chuỗi "25.5°C / 60%" của DHT22
-            if (data.containsKey("value")) {
-                String valStr = String.valueOf(data.get("value"));
-                if (valStr.contains("°C") && valStr.contains("%")) {
-                    try {
-                        String[] parts = valStr.split("/");
-                        double temp = Double.parseDouble(parts[0].replace("°C", "").trim());
-                        double hum = Double.parseDouble(parts[1].replace("%", "").trim());
-
-                        sensorData.setTemperature(temp);
-                        sensorData.setHumidity(hum);
-                    } catch (Exception e) {
-                        log.warn("Không thể bóc tách nhiệt độ/độ ẩm từ chuỗi: {}", valStr);
-                    }
-                }
-            }
-
-            // 2. Logic xử lý riêng cho Radar (In log ra Terminal cho đẹp)
+            // Vẫn giữ lại Log cho Radar để Terminal báo đẹp
             if ("radar".equals(device.getDeviceType())) {
                 double dist = data.containsKey("distance") ? ((Number) data.get("distance")).doubleValue() : 0;
                 log.info("📡 [RADAR - {}] Phát hiện vật thể tại khoảng cách: {} cm", deviceName, dist);
@@ -147,16 +127,9 @@ public class MqttService implements MqttCallback {
 
             sensorDataRepository.save(sensorData);
             log.info("Đã lưu dữ liệu Sensor vào DB cho thiết bị: {}", deviceName);
-
-            // Cập nhật trạng thái vào bảng Device
-            if (data.containsKey("status")) {
-                device.setStatus((String) data.get("status"));
-                deviceRepository.save(device);
-            }
         }
     }
 
-    // XỬ LÝ LƯU DEVICE STATUS & LOG (Trạng thái Bật/Tắt)
     @Transactional
     protected void handleDeviceStatus(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -171,17 +144,15 @@ public class MqttService implements MqttCallback {
 
             LocalDateTime actionTime = extractTimestamp(data);
 
-            // 1. Cập nhật trạng thái mới nhất vào bảng DeviceState
             DeviceState state = deviceStateRepository.findById(device.getId())
                     .orElse(DeviceState.builder()
                             .deviceId(device.getId())
                             .device(device).build());
 
-            state.setState(data); // Lưu nguyên cục JSON
+            state.setState(data);
             state.setUpdatedAt(actionTime);
             deviceStateRepository.save(state);
 
-            // 2. Ghi Log hành động thông minh
             String actionValue = "Cập nhật trạng thái";
             if (data.containsKey("value")) {
                 actionValue = (String) data.get("value");
@@ -202,15 +173,23 @@ public class MqttService implements MqttCallback {
             deviceLogRepository.save(logEntry);
             log.info("Đã cập nhật Trạng thái & Log cho thiết bị: {} -> {}", deviceName, actionValue);
 
-            // 3. Cập nhật cột status của bảng Device
-            if (data.containsKey("status")) {
-                device.setStatus((String) data.get("status"));
+            // ĐÃ SỬA: Đọc key "state" hoặc "enable" (boolean) để ép ra chữ Bật/Tắt
+            boolean statusChanged = false;
+            if (data.containsKey("state")) {
+                device.setStatus((Boolean) data.get("state") ? "Bật" : "Tắt");
+                statusChanged = true;
+            } else if (data.containsKey("enable")) {
+                device.setStatus((Boolean) data.get("enable") ? "Bật" : "Tắt");
+                statusChanged = true;
+            }
+
+            // Chỉ lưu lại bảng Device nếu trạng thái Bật/Tắt thực sự có thay đổi
+            if (statusChanged) {
                 deviceRepository.save(device);
             }
         }
     }
 
-    // Hàm bóc tách Unix Timestamp từ ESP32 (Giây) sang LocalDateTime của Server
     private LocalDateTime extractTimestamp(Map<String, Object> data) {
         if (data.containsKey("timestamp")) {
             long unixSeconds = ((Number) data.get("timestamp")).longValue();
