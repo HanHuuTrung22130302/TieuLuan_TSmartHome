@@ -1,16 +1,17 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, LayoutDashboard, Grid, Settings, LogOut, Zap, Map } from 'lucide-react';
+import { Home, LayoutDashboard, Settings, LogOut, Map, Cpu, Bell, ShieldCheck } from 'lucide-react';
 
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const menuItems = [
-    { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Tổng quan' },
+    { path: '/home', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Tổng quan' },
     { path: '/map', icon: <Map className="w-5 h-5" />, label: 'Bản đồ không gian' },
     { path: '/map3d', icon: <Map className="w-5 h-5" />, label: 'Bản đồ không gian 3D' },
-    { path: '/rooms', icon: <Grid className="w-5 h-5" />, label: 'Quản lý phòng' },
-    { path: '/automations', icon: <Zap className="w-5 h-5" />, label: 'Tự động hóa' },
+    { path: '/devices', icon: <Cpu className="w-5 h-5" />, label: 'Quản lý thiết bị' },
+    { path: '/notifications', icon: <Bell className="w-5 h-5" />, label: 'Thông báo' },
+    { path: '/security', icon: <ShieldCheck className="w-5 h-5" />, label: 'Bảo mật & An toàn' },
   ];
 
   const handleLogout = () => {
@@ -39,7 +40,7 @@ export default function MainLayout() {
           {/* Menu chính */}
           <nav className="p-4 space-y-2 mt-4">
             {menuItems.map((item) => {
-              // SỬA LỖI Ở ĐÂY: So sánh chính xác tuyệt đối, hoặc kiểm tra xem có phải là route con không
+              // So sánh chính xác tuyệt đối, hoặc kiểm tra xem có phải là route con không
               const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
               
               return (

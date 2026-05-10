@@ -37,6 +37,9 @@ public class Device {
     @Column(length = 50)
     private String status;
 
+    @Column(name = "is_fake")
+    private Boolean isFake;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

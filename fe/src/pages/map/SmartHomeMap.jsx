@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { 
   Thermometer, Camera, DoorClosed, Activity, Flame, 
   Lightbulb, Shield, Wind, Server, Zap, Map, Pencil, PlusCircle, 
-  ZoomIn, ZoomOut, Maximize, Lock, Mic, AppWindow, Tv, Sun, Bell, MousePointer2
+  ZoomIn, ZoomOut, Maximize, Lock, Mic, AppWindow, Tv, Sun, Bell, MousePointer2,Blinds
 } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
@@ -46,10 +46,12 @@ const MOCK_SENSORS = [
   { id: 'pn3_3', name: 'Cửa sổ PN3', type: 'security', room: 'Phòng Ngủ 3', x: 71.04, y: 19.17, value: 'Đóng', status: 'An toàn', isSimulated: true, icon: AppWindow },
 
   // 🌿 BAN CÔNG
-  { id: 'bc1_1', name: 'Cửa Ban công 1', type: 'security', room: 'Ban Công 1', x: 65.93, y: 74.70, value: 'Khóa', status: 'An toàn', isSimulated: true, icon: DoorClosed },
+  { id: 'bc1_1', name: 'Cửa Ban công 1', type: 'security', room: 'Ban Công 1', x: 65.93, y: 71.70, value: 'Khóa', status: 'An toàn', isSimulated: true, icon: DoorClosed },
   { id: 'bc1_2', name: 'Đèn Ban công 1', type: 'appliance', room: 'Ban Công 1', x: 70.65, y: 74.27, value: 'Tắt', status: 'Bình thường', isSimulated: true, icon: Lightbulb },
   { id: 'bc2_1', name: 'Cửa Ban công 2', type: 'security', room: 'Ban Công 2', x: 73.26, y: 46.39, value: 'Mở', status: 'Cảnh báo', isSimulated: true, icon: DoorClosed },
   { id: 'bc2_2', name: 'Đèn Ban công 2', type: 'appliance', room: 'Ban Công 2', x: 70.41, y: 37.59, value: 'Bật', status: 'Bình thường', isSimulated: true, icon: Lightbulb },
+
+  { id: 'bc1_3', name: 'Rèm Ban công 1', type: 'appliance', room: 'Ban Công 1', x: 65.93, y: 80.59, value: 'Đang mở (50%)', status: 'Hoạt động', isSimulated: true, icon: Blinds },
 
   // 🚿 NHÀ VỆ SINH
   { id: 'wc1', name: 'Đèn WC 1', type: 'appliance', room: 'WC 1', x: 70.93, y: 56.14, value: 'Tắt', status: 'Bình thường', isSimulated: true, icon: Lightbulb },

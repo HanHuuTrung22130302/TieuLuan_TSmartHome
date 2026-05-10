@@ -2,16 +2,21 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Auth from './pages/Auth';
 import ForgotPassword from './pages/ForgotPassword';
 import MainLayout from './layouts/MainLayout';
-import Dashboard from './pages/dashboard/Dashboard'; // Đảm bảo đường dẫn này đúng
+import Home from './pages/home/Home'; 
 import SmartHomeMap from './pages/map/SmartHomeMap';
 import SmartHomeMap3D from './pages/map/SmartHomeMap3D';
+
+// Import 3 trang mới
+import Devices from './pages/devices/Devices';
+import Notifications from './pages/notifications/Notifications';
+import Security from './pages/security/Security';
 
 // 1. Hàm kiểm tra xem đã có Token chưa (trong LocalStorage hoặc SessionStorage)
 const isAuthenticated = () => {
   return localStorage.getItem('token') || sessionStorage.getItem('token');
 };
 
-// 2. Component chặn trang Yêu cầu Đăng nhập (Dashboard, Rooms...)
+// 2. Component chặn trang Yêu cầu Đăng nhập (Home, Rooms...)
 const ProtectedRoute = ({ children }) => {
   if (!isAuthenticated()) {
     // Chưa có token -> Đá về trang Đăng nhập
@@ -23,8 +28,8 @@ const ProtectedRoute = ({ children }) => {
 // 3. Component chặn trang Không Yêu cầu Đăng nhập (Login, Register, Forgot Password)
 const PublicRoute = ({ children }) => {
   if (isAuthenticated()) {
-    // Có token rồi -> Đá vào Dashboard (Không cho quay lại màn Login)
-    return <Navigate to="/dashboard" replace />;
+    // Có token rồi -> Đá vào Home (Không cho quay lại màn Login)
+    return <Navigate to="/home" replace />;
   }
   return children;
 };
@@ -34,22 +39,25 @@ function App() {
     <BrowserRouter>
       <Routes>
         {/* ================= PUBLIC ROUTES ================= */}
-        {/* Đã đăng nhập thì không cho vào 2 trang này nữa */}
         <Route path="/" element={<PublicRoute><Auth /></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
         
         {/* ================= PROTECTED ROUTES ================= */}
-        {/* Bắt buộc phải có Token mới được nhúng vào MainLayout */}
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          {/* Các trang sau này của bạn như /rooms, /settings sẽ nằm ở đây */}
+          <Route path="/home" element={<Home />} />
+          
+          {/* CÁC TRANG CHỨC NĂNG */}
+          <Route path="/devices" element={<Devices />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/security" element={<Security />} />
+          
+          {/* CÁC TRANG BẢN ĐỒ */}
           <Route path="/map" element={<SmartHomeMap />} />
           <Route path="/map3d" element={<SmartHomeMap3D />} />
         </Route>
 
         {/* ================= 404 CATCH-ALL ================= */}
-        {/* Nếu gõ URL bậy bạ, tự động kiểm tra token để đẩy về đúng chỗ */}
-        <Route path="*" element={<Navigate to={isAuthenticated() ? "/dashboard" : "/"} replace />} />
+        <Route path="*" element={<Navigate to={isAuthenticated() ? "/home" : "/"} replace />} />
         
       </Routes>
     </BrowserRouter>
