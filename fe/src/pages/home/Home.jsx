@@ -1,44 +1,57 @@
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Canvas } from '@react-three/fiber';
-import { useGLTF, OrbitControls, Environment } from '@react-three/drei';
 import { 
   Search, Mic, ChevronDown, Wind, Droplets, Sun, 
-  Tv, Radio, Lightbulb, MoreVertical, MapPin, 
-  CloudRain, Navigation, ShieldCheck, Activity,
-  Map as MapIcon, Cuboid
+  MapPin, CloudRain, Navigation, ShieldCheck, Activity,
+  Map as MapIcon, Flame, Thermometer, Radar, Volume2,
+  AlertTriangle, CheckCircle2, Clock
 } from 'lucide-react';
 import useWeather from '../../hooks/useWeather'; 
 
-// ================= COMPONENT LOAD MÔ HÌNH 3D MINI =================
-function MiniHouseModel() {
-  // Trỏ đúng vào file floor_plan.glb của bạn
-  const { scene } = useGLTF('/web.glb');
-  
-  return (
-    <primitive 
-      object={scene} 
-      // Bạn có thể chỉnh scale (phóng to/thu nhỏ) và position (dịch lên/xuống) cho vừa với khung widget
-      scale={0.8} 
-      position={[0, -1, 0]} 
-    />
-  );
-}
+// ================= DỮ LIỆU MOCK TỪ PAYLOAD =================
+const MOCK_LOGS = [
+  { id: 5122, deviceId: "kitchen_sensor_flame", deviceName: "Cảm biến Lửa Bếp", value: "CÓ LỬA", status: "Nguy hiểm", time: "22:26:04", date: "10/05/2026", type: "flame" },
+  { id: 5123, deviceId: "kitchen_sensor_flame", deviceName: "Cảm biến Lửa Bếp", value: "Không có lửa", status: "An toàn", time: "22:26:04", date: "10/05/2026", type: "flame" },
+  { id: 5143, deviceId: "livingroom_sensor_audio", deviceName: "Âm thanh P.Khách", value: "30 dB", status: "Yên tĩnh", time: "22:27:40", date: "10/05/2026", type: "audio" },
+  { id: 5144, deviceId: "entrance_sensor_pir", deviceName: "PIR Cửa chính", value: "Có người", status: "Cảnh báo", time: "22:27:40", date: "10/05/2026", type: "pir" },
+  { id: 5145, deviceId: "livingroom_sensor_dht22", deviceName: "Nhiệt/Ẩm P.Khách", value: "36.1°C / 53.0%", status: "Bình thường", time: "22:27:44", date: "10/05/2026", type: "temp" },
+  { id: 5146, deviceId: "kitchen_sensor_mq135", deviceName: "Khí MQ-135 Bếp", value: "Khí độc", status: "Nguy hiểm", time: "22:27:45", date: "10/05/2026", type: "gas" },
+  { id: 5362, deviceId: "hallway_sensor_radar", deviceName: "Radar Hành lang", value: "Có vật thể tại Block 1 (8.4m)", status: "Cảnh báo", time: "22:44:55", date: "10/05/2026", type: "radar" },
+  { id: 5363, deviceId: "livingroom_sensor_audio", deviceName: "Âm thanh P.Khách", value: "30 dB", status: "Yên tĩnh", time: "22:45:00", date: "10/05/2026", type: "audio" },
+];
 
 export default function Home() {
   const weather = useWeather();
   const [currentDate, setCurrentDate] = useState('');
   
-  // Quản lý hiển thị Map 2D / 3D
-  const [mapView, setMapView] = useState('2D'); 
+  // STATES CHO BỘ LỌC LOGS
+  const [timeFilter, setTimeFilter] = useState('12H'); 
+  const [moduleFilter, setModuleFilter] = useState('all');
 
   useEffect(() => {
     const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     setCurrentDate(new Date().toLocaleDateString('vi-VN', dateOptions));
   }, []);
 
+  const getLogStyle = (log) => {
+    if (log.status === 'Nguy hiểm' || log.status === 'Cảnh báo') {
+      return { icon: AlertTriangle, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/30' };
+    }
+    if (log.status === 'An toàn') {
+      return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
+    }
+    if (log.type === 'audio') return { icon: Volume2, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/5' };
+    if (log.type === 'temp') return { icon: Thermometer, color: 'text-sky-400', bg: 'bg-sky-400/10', border: 'border-sky-400/30' };
+    if (log.type === 'gas') return { icon: Wind, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/30' };
+    if (log.type === 'radar') return { icon: Radar, color: 'text-indigo-400', bg: 'bg-indigo-400/10', border: 'border-indigo-400/30' };
+    
+    return { icon: Activity, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/5' };
+  };
+
+  const filteredLogs = MOCK_LOGS.filter(log => moduleFilter === 'all' || log.type === moduleFilter).reverse(); 
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto font-sans">
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto overflow-x-hidden font-sans">
       
       {/* ================= HEADER ================= */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
@@ -50,7 +63,7 @@ export default function Home() {
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex items-center bg-white/5 border border-white/10 rounded-full px-4 py-2.5 flex-1 md:w-80">
             <Search className="w-4 h-4 text-slate-400 mr-3" />
-            <input type="text" placeholder="Tìm kiếm thiết bị..." className="bg-transparent border-none outline-none text-sm text-white w-full placeholder:text-slate-500" />
+            <input type="text" placeholder="Tìm kiếm hệ thống..." className="bg-transparent border-none outline-none text-sm text-white w-full placeholder:text-slate-500" />
           </div>
           <button className="p-3 bg-white text-black rounded-full hover:bg-slate-200 transition-colors shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.2)]">
             <Mic className="w-4 h-4" />
@@ -68,237 +81,208 @@ export default function Home() {
       {/* ================= MAIN LAYOUT ================= */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* CỘT TRÁI */}
+        {/* ================= CỘT TRÁI: NHẬT KÝ HỆ THỐNG ================= */}
         <div className="xl:col-span-2 flex flex-col gap-6">
-          
-          {/* WIDGET THỜI TIẾT */}
-          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-8 flex flex-col md:flex-row gap-8 shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-72 h-72 bg-sky-500/10 rounded-full blur-3xl -z-0 translate-x-1/2 -translate-y-1/3 group-hover:bg-sky-500/20 transition-colors duration-700"></div>
+          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-6 shadow-2xl flex flex-col h-[600px] xl:h-[calc(100vh-10rem)]">
             
-            <div className="relative z-10 flex flex-col justify-between min-w-[200px]">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <MapPin className="w-4 h-4 text-sky-400" />
-                  <span className="text-slate-400 font-bold text-xs uppercase tracking-widest">Biên Hòa, VN</span>
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-6 leading-tight">Môi trường<br/>ngoài trời</h3>
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-500" /> Nhật ký Hoạt động
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">Dữ liệu từ payload cảm biến (Real-time)</p>
               </div>
-              
-              <div>
-                <div className="flex items-center gap-4 mb-3">
-                  {weather.icon && <weather.icon className="w-14 h-14 text-sky-400 drop-shadow-[0_0_15px_rgba(56,189,248,0.4)]" />}
-                  <h1 className="text-7xl font-black tracking-tighter">{weather.temp}<span className="text-3xl text-slate-500 font-normal">°C</span></h1>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative">
+                  <select 
+                    value={moduleFilter}
+                    onChange={(e) => setModuleFilter(e.target.value)}
+                    className="appearance-none bg-black border border-white/10 text-slate-300 text-sm font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors"
+                  >
+                    <option value="all">Tất cả Module</option>
+                    <option value="pir">PIR / Chuyển động</option>
+                    <option value="radar">Radar</option>
+                    <option value="flame">Cảm biến Lửa</option>
+                    <option value="gas">Cảm biến Khí</option>
+                    <option value="audio">Âm thanh</option>
+                    <option value="temp">Nhiệt ẩm</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                 </div>
-                <p className="text-xl font-medium text-slate-200">{weather.desc}</p>
-                <p className="text-sm text-slate-500 mt-1">Cảm giác như {weather.feelsLike}°C</p>
+
+                <div className="flex bg-black border border-white/10 rounded-xl p-1">
+                  {['12H', '1D', '7D'].map(t => (
+                    <button 
+                      key={t}
+                      onClick={() => setTimeFilter(t)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${timeFilter === t ? 'bg-[#e8f5a1] text-black shadow-md' : 'text-slate-500 hover:text-white'}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="relative z-10 flex-1 grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
-                <div className="flex items-center justify-between mb-4">
-                  <Wind className={`w-5 h-5 ${weather.aqiColor}`} />
-                  <span className={`text-[10px] font-black tracking-wider px-2 py-1 ${weather.aqiBg} ${weather.aqiColor} rounded-lg`}>{weather.aqiStatus}</span>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Chất lượng KK</p>
-                  <p className="text-2xl font-bold text-white">{weather.aqi} <span className="text-xs text-slate-500 font-medium">AQI</span></p>
-                </div>
-              </div>
-              
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
-                <div className="flex items-center justify-between mb-4">
-                  <Droplets className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Độ ẩm</p>
-                  <p className="text-2xl font-bold text-white">{weather.humidity}<span className="text-sm text-slate-500 font-medium">%</span></p>
-                </div>
-              </div>
-
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
-                <div className="flex items-center justify-between mb-4">
-                  <Sun className={`w-5 h-5 ${weather.uvColor}`} />
-                  <span className={`text-[10px] font-black tracking-wider px-2 py-1 ${weather.uvBg} ${weather.uvColor} rounded-lg`}>{weather.uvStatus}</span>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Chỉ số UV max</p>
-                  <p className="text-2xl font-bold text-white">{weather.uv}</p>
-                </div>
-              </div>
-
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors col-span-2 md:col-span-2">
-                 <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-white/5 rounded-full"><Navigation className="w-4 h-4 text-slate-300" /></div>
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Tốc độ & Hướng gió</p>
-                </div>
-                <div className="mt-auto">
-                  <p className="text-2xl font-bold text-white">{weather.windSpeed} <span className="text-sm text-slate-500 font-medium">km/h</span> • <span className="text-base font-medium text-slate-300">{weather.windDir}</span></p>
-                </div>
-              </div>
-
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
-                <div className="flex items-center justify-between mb-4">
-                  <CloudRain className="w-5 h-5 text-indigo-400" />
-                </div>
-                <div>
-                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Tỷ lệ mưa</p>
-                  <p className="text-2xl font-bold text-white">{weather.pop}<span className="text-sm text-slate-500 font-medium">%</span></p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* THIẾT BỊ THƯỜNG DÙNG */}
-          <div className="mt-4">
-            <div className="flex justify-between items-end mb-6">
-              <h3 className="text-xl font-bold">Thường dùng (3)</h3>
-              <button className="text-slate-400 text-sm hover:text-white transition-colors">Xem tất cả</button>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-[#121212] border border-white/5 rounded-3xl p-5 flex flex-col justify-between aspect-square group hover:bg-white/5 transition-colors cursor-pointer">
-                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
-                  <Tv className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                </div>
-                <div className="flex items-end justify-between">
-                  <p className="font-medium text-slate-300">TV - P.Khách</p>
-                  <div className="w-8 h-4 rounded-full border border-slate-600 flex items-center px-0.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+              {filteredLogs.length > 0 ? filteredLogs.map((log, idx) => {
+                const style = getLogStyle(log);
+                const LogIcon = style.icon;
+                
+                return (
+                  <div key={idx} className={`flex items-start gap-4 p-4 rounded-2xl border ${style.border} bg-white/5 hover:bg-white/10 transition-colors cursor-default`}>
+                    <div className={`p-3 rounded-xl shrink-0 ${style.bg}`}>
+                      <LogIcon className={`w-5 h-5 ${style.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1 mb-1">
+                        <h4 className="font-bold text-white text-base truncate">{log.deviceName}</h4>
+                        <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+                          <Clock className="w-3.5 h-3.5" />
+                          {log.time} <span className="text-slate-600 hidden sm:inline">•</span> {log.date}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${style.bg} ${style.color} border ${style.border}`}>
+                          {log.status}
+                        </span>
+                        <span className="text-sm font-medium text-slate-300 bg-black/30 px-3 py-1 rounded-lg border border-white/5">
+                          Payload: <strong className="text-white">{log.value}</strong>
+                        </span>
+                      </div>
+                    </div>
                   </div>
+                );
+              }) : (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                  <ShieldCheck className="w-12 h-12 mb-3 opacity-20" />
+                  <p>Không có dữ liệu nào khớp với bộ lọc.</p>
                 </div>
-              </div>
-
-              <div className="bg-[#121212] border border-white/5 rounded-3xl p-5 flex flex-col justify-between aspect-square group hover:bg-white/5 transition-colors cursor-pointer">
-                <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
-                  <Radio className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                </div>
-                <div className="flex items-end justify-between">
-                  <p className="font-medium text-slate-300">Còi Buzzer</p>
-                  <div className="w-8 h-4 rounded-full border border-slate-600 flex items-center px-0.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-[#121212] border border-white/5 rounded-3xl p-5 flex flex-col justify-between aspect-square relative overflow-hidden cursor-pointer group">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#e8f5a1]/10 to-transparent opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center relative z-10">
-                  <Lightbulb className="w-5 h-5 text-[#e8f5a1] drop-shadow-[0_0_8px_rgba(232,245,161,0.8)]" />
-                </div>
-                <div className="flex items-end justify-between relative z-10">
-                  <p className="font-medium text-white">Đèn Bếp</p>
-                  <div className="w-8 h-4 rounded-full bg-[#e8f5a1] flex items-center px-0.5 justify-end shadow-[0_0_10px_rgba(232,245,161,0.3)]">
-                    <div className="w-2.5 h-2.5 rounded-full bg-black"></div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* CỘT PHẢI */}
-        <div className="xl:col-span-1 flex flex-col gap-6">
+        {/* ================= CỘT PHẢI: MAP VÀ THỜI TIẾT ================= */}
+        <div className="xl:col-span-1 flex flex-col gap-6 xl:h-[calc(100vh-10rem)]">
           
-          {/* ================= MAP WIDGET ================= */}
-          <div className="bg-[#121212] border border-white/5 rounded-[2rem] p-4 flex flex-col h-[350px] relative overflow-hidden group">
+          {/* WIDGET LIVE MAP (Tự động co giãn lấp đầy khoảng trống) */}
+          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-4 flex flex-col flex-1 min-h-[200px] relative overflow-hidden group shadow-2xl">
+            <div 
+              className="absolute inset-0 bg-cover bg-center opacity-60 group-hover:opacity-80 transition-all duration-700 group-hover:scale-105"
+              style={{ backgroundImage: "url('/apartment_map.png')" }}
+            ></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-black/30 to-transparent"></div>
             
-            {/* Lớp nền khi ở chế độ 2D */}
-            {mapView === '2D' && (
-              <div 
-                className="absolute inset-0 bg-cover bg-center opacity-60 group-hover:opacity-80 transition-all duration-700 group-hover:scale-105"
-                style={{ backgroundImage: "url('/apartment_map.png')" }}
-              ></div>
-            )}
-
-            {/* Lớp Canvas vẽ mô hình khi ở chế độ 3D */}
-            {mapView === '3D' && (
-              <div className="absolute inset-0 z-0">
-                <Canvas camera={{ position: [0, 5, 8], fov: 45 }}>
-                  <ambientLight intensity={0.5} />
-                  <Environment preset="city" />
-                  <Suspense fallback={null}>
-                    <MiniHouseModel />
-                  </Suspense>
-                  {/* autoRotate giúp nhà tự quay, enableZoom=false để tránh lỗi lăn chuột */}
-                  <OrbitControls autoRotate autoRotateSpeed={2} enableZoom={false} enablePan={false} />
-                </Canvas>
-              </div>
-            )}
-            
-            {/* Gradient đen mờ để làm nổi bật UI */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-black/20 to-transparent pointer-events-none"></div>
-            
-            <div className="relative z-10 flex justify-between items-start mb-auto pointer-events-auto">
-              <div className="flex bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/10 shadow-lg">
-                <button 
-                  onClick={() => setMapView('2D')}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mapView === '2D' ? 'bg-[#e8f5a1] text-black shadow-md' : 'text-slate-400 hover:text-white'}`}
-                >
-                  <MapIcon className="w-3.5 h-3.5" /> 2D
-                </button>
-                <button 
-                  onClick={() => setMapView('3D')}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${mapView === '3D' ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
-                >
-                  <Cuboid className="w-3.5 h-3.5" /> 3D
-                </button>
-              </div>
+            <div className="relative z-10 flex justify-between items-start mb-auto">
+              <span className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold text-white border border-white/10 shadow-lg">
+                <MapIcon className="w-3.5 h-3.5 text-[#e8f5a1]" /> Live Map 2D
+              </span>
             </div>
 
-            {/* Radar mồi cho chế độ 2D */}
-            {mapView === '2D' && (
-              <>
-                <div className="absolute top-[40%] left-[30%] w-3 h-3 bg-rose-500 rounded-full animate-ping pointer-events-none"></div>
-                <div className="absolute top-[40%] left-[30%] w-3 h-3 bg-rose-500 rounded-full border-2 border-white pointer-events-none"></div>
-                
-                <div className="absolute bottom-[30%] right-[25%] w-3 h-3 bg-blue-500 rounded-full animate-ping pointer-events-none" style={{ animationDelay: '0.5s' }}></div>
-                <div className="absolute bottom-[30%] right-[25%] w-3 h-3 bg-blue-500 rounded-full border-2 border-white pointer-events-none"></div>
-              </>
-            )}
+            <div className="absolute top-[40%] left-[30%] w-3 h-3 bg-rose-500 rounded-full animate-ping"></div>
+            <div className="absolute top-[40%] left-[30%] w-3 h-3 bg-rose-500 rounded-full border-2 border-white"></div>
+            <div className="absolute bottom-[30%] right-[25%] w-3 h-3 bg-blue-500 rounded-full animate-ping" style={{ animationDelay: '0.5s' }}></div>
+            <div className="absolute bottom-[30%] right-[25%] w-3 h-3 bg-blue-500 rounded-full border-2 border-white"></div>
 
-            {/* Nút truy cập vào trang Map tương ứng */}
             <Link 
-              to={mapView === '2D' ? "/map" : "/map3d"} 
-              className="relative z-10 w-full py-4 mt-auto bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl font-bold text-sm text-center hover:bg-white hover:text-black transition-colors shadow-xl"
+              to="/map" 
+              className="relative z-10 w-full py-3 mt-auto bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl font-bold text-sm text-center hover:bg-white hover:text-black transition-colors shadow-xl"
             >
-              Mở chi tiết Không gian {mapView}
+              Mở chi tiết Không gian
             </Link>
           </div>
 
-          <div className="flex items-center justify-between mt-2">
-            <h3 className="text-xl font-bold">Widgets (01)</h3>
-            <button className="bg-[#e8f5a1] text-black px-4 py-1.5 rounded-full text-sm font-bold hover:bg-[#d6e685] transition-colors">
-              Thêm mới
-            </button>
-          </div>
+          {/* WIDGET THỜI TIẾT DỌC ĐÃ LÀM LẠI GIAO DIỆN (Trái Text - Phải Data) */}
+          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-6 flex flex-col gap-5 shadow-2xl relative overflow-hidden shrink-0">
+            <div className="absolute -top-20 -right-20 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-          {/* SYSTEM HEALTH WIDGET */}
-          <div className="bg-[#121212] border border-white/5 rounded-[2rem] p-6 relative overflow-hidden flex flex-col justify-between gap-6 group hover:border-emerald-500/30 transition-colors">
-            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-colors"></div>
-            
-            <div className="relative z-10 flex justify-between items-start">
-              <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/20">
-                <ShieldCheck className="w-7 h-7 text-emerald-400" />
+            {/* Header Thời tiết */}
+            <div className="flex justify-between items-center relative z-10">
+              <div className="flex items-center gap-3">
+                {weather.icon && <weather.icon className="w-10 h-10 text-sky-400 drop-shadow-[0_0_10px_rgba(56,189,248,0.3)]" />}
+                <div>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <MapPin className="w-3 h-3 text-sky-400" />
+                    <span className="text-slate-400 font-bold text-[9px] uppercase tracking-widest">Biên Hòa, VN</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white leading-none">Thời tiết</h3>
+                </div>
               </div>
               <div className="text-right">
-                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mb-1">Trạng thái hệ thống</p>
-                <h2 className="text-2xl font-black text-emerald-400">AN TOÀN</h2>
+                <h1 className="text-4xl font-black tracking-tighter text-white leading-none">{weather.temp}<span className="text-lg text-slate-500 font-normal">°C</span></h1>
+                <p className="text-xs font-medium text-sky-400 capitalize mt-1">{weather.desc}</p>
               </div>
             </div>
 
-            <div className="relative z-10 flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-              <Activity className="w-4 h-4 text-blue-400" />
-              <p className="text-sm font-medium text-slate-300"><strong className="text-white">40/40</strong> thiết bị online</p>
-            </div>
+            {/* Lưới 6 ô thông số hiển thị kiểu Trái - Phải */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
+              
+              {/* Ô 1: AQI */}
+              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wind className={`w-4 h-4 ${weather.aqiColor}`} />
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">AQI</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${weather.aqiBg} ${weather.aqiColor}`}>
+                    {weather.aqiStatus}
+                  </span>
+                  <span className="text-sm font-bold text-white">{weather.aqi}</span>
+                </div>
+              </div>
 
-            <div className="relative z-10 flex justify-between items-end">
-              <button className="text-slate-500 text-xs font-bold hover:text-white transition-colors uppercase tracking-wider">
-                Xem chi tiết
-              </button>
-              <button className="w-8 h-8 bg-white/5 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors">
-                <MoreVertical className="w-4 h-4 text-slate-400" />
-              </button>
+              {/* Ô 2: Độ ẩm */}
+              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Droplets className="w-4 h-4 text-blue-400" />
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Độ ẩm</span>
+                </div>
+                <span className="text-sm font-bold text-white">{weather.humidity}%</span>
+              </div>
+
+              {/* Ô 3: UV Index */}
+              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sun className={`w-4 h-4 ${weather.uvColor}`} />
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tia UV</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${weather.uvBg} ${weather.uvColor}`}>
+                    {weather.uvStatus}
+                  </span>
+                  <span className="text-sm font-bold text-white">{weather.uv}</span>
+                </div>
+              </div>
+
+              {/* Ô 4: Cảm giác như */}
+              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Thermometer className="w-4 h-4 text-orange-400" />
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Cảm giác</span>
+                </div>
+                <span className="text-sm font-bold text-white">{weather.feelsLike}°C</span>
+              </div>
+
+              {/* Ô 5: Tốc độ gió */}
+              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-slate-300" />
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Gió</span>
+                </div>
+                <span className="text-sm font-bold text-white">{weather.windSpeed} <span className="text-[10px] text-slate-500 font-normal">km/h</span></span>
+              </div>
+
+              {/* Ô 6: Tỷ lệ mưa */}
+              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CloudRain className="w-4 h-4 text-indigo-400" />
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Mưa</span>
+                </div>
+                <span className="text-sm font-bold text-white">{weather.pop}%</span>
+              </div>
+
             </div>
           </div>
 
