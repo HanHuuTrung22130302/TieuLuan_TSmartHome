@@ -82,7 +82,7 @@ public class MqttService implements MqttCallback {
             handleDeviceStatus(topic, data);
         }
 
-        messagingTemplate.convertAndSend("/topic/smarthome/realtime", (Object) data);
+        // Đã xóa lệnh đẩy WebSocket ở đây để tránh gửi đúp (Double Push)
     }
 
     private Device getDeviceFromCache(String deviceName) {
@@ -99,7 +99,7 @@ public class MqttService implements MqttCallback {
         return device;
     }
 
-    // XỬ LÝ LƯU SENSOR DATA (Đã xóa bỏ logic bóc tách Nhiệt/Ẩm)
+    // XỬ LÝ LƯU SENSOR DATA
     @Transactional
     protected void handleSensorData(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -112,14 +112,12 @@ public class MqttService implements MqttCallback {
                 device.setIsFake((Boolean) data.get("isFake"));
             }
 
-            // Chỉ cần lưu toàn bộ cục JSON vào biến 'value' là xong
             SensorData sensorData = SensorData.builder()
                     .device(device)
                     .value(data)
                     .createdAt(extractTimestamp(data))
                     .build();
 
-            // Vẫn giữ lại Log cho Radar để Terminal báo đẹp
             if ("radar".equals(device.getDeviceType())) {
                 double dist = data.containsKey("distance") ? ((Number) data.get("distance")).doubleValue() : 0;
                 log.info("📡 [RADAR - {}] Phát hiện vật thể tại khoảng cách: {} cm", deviceName, dist);
@@ -127,9 +125,13 @@ public class MqttService implements MqttCallback {
 
             sensorDataRepository.save(sensorData);
             log.info("Đã lưu dữ liệu Sensor vào DB cho thiết bị: {}", deviceName);
+
+            // Đẩy dữ liệu Sensor thời gian thực lên Dashboard
+            messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
         }
     }
 
+    // XỬ LÝ LƯU DEVICE STATUS
     @Transactional
     protected void handleDeviceStatus(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -173,7 +175,6 @@ public class MqttService implements MqttCallback {
             deviceLogRepository.save(logEntry);
             log.info("Đã cập nhật Trạng thái & Log cho thiết bị: {} -> {}", deviceName, actionValue);
 
-            // ĐÃ SỬA: Đọc key "state" hoặc "enable" (boolean) để ép ra chữ Bật/Tắt
             boolean statusChanged = false;
             if (data.containsKey("state")) {
                 device.setStatus((Boolean) data.get("state") ? "Bật" : "Tắt");
@@ -183,10 +184,13 @@ public class MqttService implements MqttCallback {
                 statusChanged = true;
             }
 
-            // Chỉ lưu lại bảng Device nếu trạng thái Bật/Tắt thực sự có thay đổi
             if (statusChanged) {
                 deviceRepository.save(device);
             }
+
+            // Đẩy dữ liệu Status thời gian thực lên Dashboard
+            messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
+            log.info("Đã đẩy dữ liệu realtime qua WebSocket...");
         }
     }
 

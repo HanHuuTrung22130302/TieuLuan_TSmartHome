@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Auth from './pages/Auth';
-import ForgotPassword from './pages/ForgotPassword';
+import Auth from './pages/Auth/Auth';
+import ForgotPassword from './pages/Auth/ForgotPassword';
 import MainLayout from './layouts/MainLayout';
 import Home from './pages/home/Home'; 
 import SmartHomeMap from './pages/map/SmartHomeMap';

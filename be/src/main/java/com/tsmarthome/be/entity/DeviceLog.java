@@ -32,7 +32,10 @@ public class DeviceLog {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> data;
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @Column(
+            name = "created_at",
+            updatable = false,
+            columnDefinition = "timestamp(6) default current_timestamp"
+    )
     private LocalDateTime createdAt;
 }
