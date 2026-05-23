@@ -100,6 +100,7 @@ public class MqttService implements MqttCallback {
     }
 
     // XỬ LÝ LƯU SENSOR DATA
+    // XỬ LÝ LƯU SENSOR DATA
     @Transactional
     protected void handleSensorData(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -108,8 +109,21 @@ public class MqttService implements MqttCallback {
         Device device = getDeviceFromCache(deviceName);
 
         if (device != null) {
+            boolean needSaveDevice = false;
+
             if (data.containsKey("isFake")) {
                 device.setIsFake((Boolean) data.get("isFake"));
+                needSaveDevice = true;
+            }
+
+            // Cập nhật status (Bình thường, Cảnh báo, Nguy hiểm...) từ cục data
+            if (data.containsKey("status")) {
+                device.setStatus((String) data.get("status"));
+                needSaveDevice = true;
+            }
+
+            if (needSaveDevice) {
+                deviceRepository.save(device);
             }
 
             SensorData sensorData = SensorData.builder()
@@ -126,7 +140,6 @@ public class MqttService implements MqttCallback {
             sensorDataRepository.save(sensorData);
             log.info("Đã lưu dữ liệu Sensor vào DB cho thiết bị: {}", deviceName);
 
-            // Đẩy dữ liệu Sensor thời gian thực lên Dashboard
             messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
         }
     }
@@ -140,30 +153,47 @@ public class MqttService implements MqttCallback {
         Device device = getDeviceFromCache(deviceName);
 
         if (device != null) {
+            boolean needSaveDevice = false;
+
             if (data.containsKey("isFake")) {
                 device.setIsFake((Boolean) data.get("isFake"));
+                needSaveDevice = true;
+            }
+
+            // 1. Cập nhật biến Bật/Tắt (state)
+            if (data.containsKey("state")) {
+                device.setState((Boolean) data.get("state"));
+                needSaveDevice = true;
+            }
+
+            // 2. Cập nhật biến Status nếu ESP32 gửi kèm (Đã tắt, Đang bật...)
+            if (data.containsKey("status")) {
+                device.setStatus((String) data.get("status"));
+                needSaveDevice = true;
+            }
+
+            if (needSaveDevice) {
+                deviceRepository.save(device);
             }
 
             LocalDateTime actionTime = extractTimestamp(data);
 
-            DeviceState state = deviceStateRepository.findById(device.getId())
+            DeviceState stateObj = deviceStateRepository.findById(device.getId())
                     .orElse(DeviceState.builder()
                             .deviceId(device.getId())
                             .device(device).build());
 
-            state.setState(data);
-            state.setUpdatedAt(actionTime);
-            deviceStateRepository.save(state);
+            stateObj.setState(data);
+            stateObj.setUpdatedAt(actionTime);
+            deviceStateRepository.save(stateObj);
 
+            // Xác định chuỗi Log
             String actionValue = "Cập nhật trạng thái";
             if (data.containsKey("value")) {
                 actionValue = (String) data.get("value");
-            } else if (data.containsKey("enable")) {
-                boolean isEnable = (Boolean) data.get("enable");
-                actionValue = isEnable ? "Kích hoạt cảm biến" : "Tắt cảm biến";
             } else if (data.containsKey("state")) {
                 boolean isOn = (Boolean) data.get("state");
-                actionValue = isOn ? "Bật thiết bị" : "Tắt thiết bị";
+                actionValue = isOn ? "Bật thiết bị/cảm biến" : "Tắt thiết bị/cảm biến";
             }
 
             DeviceLog logEntry = DeviceLog.builder()
@@ -175,22 +205,7 @@ public class MqttService implements MqttCallback {
             deviceLogRepository.save(logEntry);
             log.info("Đã cập nhật Trạng thái & Log cho thiết bị: {} -> {}", deviceName, actionValue);
 
-            boolean statusChanged = false;
-            if (data.containsKey("state")) {
-                device.setStatus((Boolean) data.get("state") ? "Bật" : "Tắt");
-                statusChanged = true;
-            } else if (data.containsKey("enable")) {
-                device.setStatus((Boolean) data.get("enable") ? "Bật" : "Tắt");
-                statusChanged = true;
-            }
-
-            if (statusChanged) {
-                deviceRepository.save(device);
-            }
-
-            // Đẩy dữ liệu Status thời gian thực lên Dashboard
             messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
-            log.info("Đã đẩy dữ liệu realtime qua WebSocket...");
         }
     }
 

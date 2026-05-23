@@ -11,26 +11,31 @@ WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 DHT dht(PIN_DHT, DHT22);
 
-Servo radarServo;
+// Servo cho Rèm Ban Công
+Servo curtainServo;
 
-// --- Tracking Thời gian ---
+// --- Tracking Thời gian & Trạng thái ---
 unsigned long lastAudioRead = 0;
 unsigned long lastAirTempRead = 0;
 unsigned long lastRadarMove = 0;
 
+unsigned long audioCheckInterval = 300000; 
+unsigned long airCheckInterval = 300000;   
+
+// --- Biến Quản lý Rèm cửa (Chạy chậm) ---
+int currentCurtainAngle = 0; // Góc thực tế hiện tại của Servo
+int targetCurtainAngle = 0;  // Góc mục tiêu muốn quay tới
+unsigned long lastCurtainMoveTime = 0;
+const int CURTAIN_SPEED_MS = 45; // 45ms/độ -> Quay 180 độ mất ~8.1 giây
+
 // ==========================================
-// CỜ BẬT/TẮT MODULE (ĐIỀU KHIỂN QUA MQTT)
+// CỜ BẬT/TẮT MODULE
 // ==========================================
 bool enablePirDoor   = true;  
 bool enablePirLiving = true;  
 bool enableMic       = true;  
-bool enableFlame     = true;  
-bool enableRadar1    = true;  // Phòng khách/Bếp (Chân 19/21)
-bool enableRadar2    = true;  // Hành lang (Chân 25/26)
-
-// --- Radar State ---
-int radarAngle = 0;
-bool radarDirection = true;
+bool enableRadar1    = true;  
+bool enableRadar2    = true;  
 
 // ==========================================
 // BIẾN NGẮT
@@ -50,6 +55,7 @@ void reconnectMQTT();
 void publishJson(const char* topic, JsonDocument& doc);
 void processRealSensors();
 void processDualRadar();
+void processCurtain(); // Khai báo hàm xử lý rèm
 float getDistance(int trigPin, int echoPin);
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 
@@ -64,13 +70,14 @@ void setup() {
   pinMode(PIN_PIR_LIVING, INPUT_PULLDOWN); attachInterrupt(digitalPinToInterrupt(PIN_PIR_LIVING), isrLiving, RISING);
   pinMode(PIN_VOICE_DIG, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(PIN_VOICE_DIG), isrVoice, FALLING); 
 
-  // Theo config.h: TRIG_1(19), ECHO_1(21) | TRIG_2(25), ECHO_2(26)
   pinMode(PIN_TRIG_1, OUTPUT); pinMode(PIN_ECHO_1, INPUT);
   pinMode(PIN_TRIG_2, OUTPUT); pinMode(PIN_ECHO_2, INPUT);
   
+  // Khởi tạo Rèm Ban Công 1
   ESP32PWM::allocateTimer(0);
-  radarServo.setPeriodHertz(50);
-  radarServo.attach(PIN_SERVO_1, 500, 2400); // Servo chân 5
+  curtainServo.setPeriodHertz(50);
+  curtainServo.attach(PIN_SERVO_1, 500, 2400); 
+  curtainServo.write(currentCurtainAngle); // Cố định ở 0 độ lúc khởi động
   
   dht.begin();
   setupWiFi();
@@ -87,70 +94,59 @@ void loop() {
 
   processRealSensors();
   processDualRadar();
+  processCurtain(); // Gọi hàm mô phỏng rèm cuốn chậm
 }
 
-// ================= XỬ LÝ RADAR THEO LOGIC MỚI =================
+// ================= XỬ LÝ RÈM CỬA CHẬM (NON-BLOCKING) =================
+void processCurtain() {
+  // Nếu góc hiện tại chưa bằng góc mục tiêu thì cho nhích từng độ một
+  if (currentCurtainAngle != targetCurtainAngle) {
+    if (millis() - lastCurtainMoveTime >= CURTAIN_SPEED_MS) {
+      lastCurtainMoveTime = millis();
+      
+      if (currentCurtainAngle < targetCurtainAngle) {
+        currentCurtainAngle++; // Đang mở rèm từ từ
+      } else {
+        currentCurtainAngle--; // Đang đóng rèm từ từ
+      }
+      
+      curtainServo.write(currentCurtainAngle);
+    }
+  }
+}
+
+// ================= XỬ LÝ RADAR TĨNH =================
 void processDualRadar() {
-  if (millis() - lastRadarMove > 150) { // Chu kỳ quét chậm mỗi 150ms
+  if (millis() - lastRadarMove > 150) { 
     lastRadarMove = millis();
     
-    // -----------------------------------------------
-    // 1. RADAR HÀNH LANG (Tĩnh - PIN_TRIG_2/PIN_ECHO_2)
-    // -----------------------------------------------
+    // 1. RADAR HÀNH LANG
     if (enableRadar2) { 
       float distHL = getDistance(PIN_TRIG_2, PIN_ECHO_2);
-      
       if (distHL > 0.1 && distHL < 8.4) {
         String blockName = (distHL > 5.0) ? "Block 1" : "Block 2";
-        
-        JsonDocument doc;
-        doc["deviceId"] = "hallway_sensor_radar";
-        doc["distance"] = round(distHL * 10) / 10.0;
-        doc["zone"] = blockName;
-        doc["value"] = "Có vật thể tại " + blockName;
-        doc["status"] = "Cảnh báo";
+        JsonDocument doc; doc["deviceId"] = "hallway_sensor_radar"; doc["distance"] = round(distHL * 10) / 10.0; doc["zone"] = blockName; doc["value"] = "Có vật thể tại " + blockName; doc["status"] = "Cảnh báo";
         publishJson("home/tsmarthome/hallway/radar/hallway_sensor_radar/data", doc);
       }
     }
 
-    delay(20); // Dừng 20ms để sóng siêu âm của hành lang tan hết, tránh nhiễu chéo
+    delay(20); 
 
-    // -----------------------------------------------
-    // 2. RADAR PHÒNG KHÁCH / BẾP (Xoay Servo - PIN_TRIG_1/PIN_ECHO_1)
-    // -----------------------------------------------
+    // 2. RADAR PHÒNG KHÁCH / BẾP
     if (enableRadar1) {
-      radarServo.write(radarAngle);
-      
-      // Kiểm tra tại các góc: 70, 75, 80, 85, 90
-      if (radarAngle >= 70 && radarAngle <= 90) {
-        delay(30); // Đợi servo nhích tới điểm đó và ổn định
-        float distPK = getDistance(PIN_TRIG_1, PIN_ECHO_1);
-        
-        if (distPK > 0.1 && distPK <= 15.5) {
-          String roomName = (distPK > 10.0) ? "Phòng Khách (Block 1)" : "Bếp (Block 2)";
-          
-          JsonDocument doc;
-          doc["deviceId"] = "livingroom_sensor_radar";
-          doc["distance"] = round(distPK * 10) / 10.0;
-          doc["angle"] = radarAngle;
-          doc["zone"] = roomName;
-          doc["value"] = "Phát hiện ở " + roomName;
-          doc["status"] = "Cảnh báo";
-          publishJson("home/tsmarthome/livingroom/radar/livingroom_sensor_radar/data", doc);
-        }
+      float distPK = getDistance(PIN_TRIG_1, PIN_ECHO_1);
+      if (distPK > 0.1 && distPK <= 15.5) {
+        String roomName = (distPK > 10.0) ? "Phòng Khách (Block 1)" : "Bếp (Block 2)";
+        JsonDocument doc; doc["deviceId"] = "livingroom_sensor_radar"; doc["distance"] = round(distPK * 10) / 10.0; doc["zone"] = roomName; doc["value"] = "Phát hiện ở " + roomName; doc["status"] = "Cảnh báo";
+        publishJson("home/tsmarthome/livingroom/radar/livingroom_sensor_radar/data", doc);
       }
-
-      // Cập nhật góc quay Servo (0 - 90 độ)
-      if (radarDirection) radarAngle += 5; else radarAngle -= 5;
-      if (radarAngle >= 90 || radarAngle <= 0) radarDirection = !radarDirection;
     }
   }
 }
 
 float getDistance(int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW); delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10); digitalWrite(trigPin, LOW);
   long duration = pulseIn(echoPin, HIGH, 15000); 
   if (duration == 0) return -1.0;
   return duration * 0.034 / 2;
@@ -160,11 +156,11 @@ float getDistance(int trigPin, int echoPin) {
 void processRealSensors() {
   unsigned long currentMillis = millis();
 
-  // 1. NGẮT ÂM THANH
+  // 1. NGẮT ÂM THANH SỐ
   if (suddenNoise) {
     JsonDocument doc; doc["deviceId"] = "livingroom_sensor_audio"; doc["value"] = "ỒN ÀO đột ngột!"; doc["status"] = "Cảnh báo";
     publishJson("home/tsmarthome/livingroom/sound/livingroom_sensor_audio/data", doc);
-    suddenNoise = false;
+    audioCheckInterval = 60000; suddenNoise = false;
   }
 
   // 2. NGẮT PIR 
@@ -176,49 +172,43 @@ void processRealSensors() {
     motionDoor = false; motionLiving = false;
   }
 
-  // 3. ĐỌC ÂM THANH (Mỗi 5 giây)
-  if (currentMillis - lastAudioRead > 5000) {
-    lastAudioRead = currentMillis;
+  // 3. ĐỌC ÂM THANH
+  if (currentMillis - lastAudioRead > audioCheckInterval || lastAudioRead == 0) {
+    lastAudioRead = currentMillis; if (lastAudioRead == 0) lastAudioRead = 1; 
     if (enableMic) {
       int maxAmp = 0, minAmp = 4095;
       for (int i = 0; i < 20; i++) { 
-        int adc = analogRead(PIN_MIC);
-        if (adc > maxAmp) maxAmp = adc;
-        if (adc < minAmp) minAmp = adc; delay(1);
+        int adc = analogRead(PIN_MIC); if (adc > maxAmp) maxAmp = adc; if (adc < minAmp) minAmp = adc; delay(1);
       }
-      int amplitude = maxAmp - minAmp;
-      int dbValue = constrain(map(amplitude, 0, 4000, 30, 100), 30, 100);
+      int amplitude = maxAmp - minAmp; int dbValue = constrain(map(amplitude, 0, 4000, 30, 100), 30, 100);
+      audioCheckInterval = (dbValue > 70) ? 60000 : 300000;  
       JsonDocument micDoc; micDoc["deviceId"] = "livingroom_sensor_audio"; micDoc["value"] = String(dbValue) + " dB"; micDoc["status"] = dbValue > 70 ? "Hơi ồn" : "Yên tĩnh";
       publishJson("home/tsmarthome/livingroom/sound/livingroom_sensor_audio/data", micDoc);
     }
   }
 
-  // 4. ĐỌC NHIỆT ĐỘ & KHÍ (Mỗi 5 phút)
-  if (currentMillis - lastAirTempRead > 300000 || lastAirTempRead == 0) {
-    lastAirTempRead = currentMillis;
-    if (lastAirTempRead == 0) lastAirTempRead = 1; 
-    
+  // 4. ĐỌC NHIỆT ĐỘ & KHÍ
+  if (currentMillis - lastAirTempRead > airCheckInterval || lastAirTempRead == 0) {
+    lastAirTempRead = currentMillis; if (lastAirTempRead == 0) lastAirTempRead = 1; 
     float t = dht.readTemperature(); float h = dht.readHumidity();
     if (!isnan(t)) {
       JsonDocument doc; doc["deviceId"] = "livingroom_sensor_dht22"; doc["value"] = String(t, 1) + "°C / " + String(h, 1) + "%"; doc["status"] = "Bình thường";
       publishJson("home/tsmarthome/livingroom/temperature/livingroom_sensor_dht22/data", doc);
     }
-
     int gasLevel = analogRead(PIN_MQ135);
+    airCheckInterval = (gasLevel > 2000) ? 60000 : 300000;  
     JsonDocument gasDoc; gasDoc["deviceId"] = "kitchen_sensor_mq135"; gasDoc["value"] = gasLevel > 2000 ? "Khí độc" : "Sạch"; gasDoc["status"] = gasLevel > 2000 ? "Nguy hiểm" : "An toàn";
     publishJson("home/tsmarthome/kitchen/air_quality/kitchen_sensor_mq135/data", gasDoc);
   }
 
   // 5. FLAME SENSOR 
   static int lastFlameState = HIGH;
-  if (enableFlame) {
-    int currentFlame = digitalRead(PIN_FLAME_KITCHEN);
-    if (currentFlame != lastFlameState) {
-      bool isFire = (currentFlame == LOW);
-      JsonDocument doc; doc["deviceId"] = "kitchen_sensor_flame"; doc["detected"] = isFire; doc["value"] = isFire ? "CÓ LỬA" : "Không có lửa"; doc["status"] = isFire ? "Nguy hiểm" : "An toàn";
-      publishJson("home/tsmarthome/kitchen/flame/kitchen_sensor_flame/data", doc);
-      lastFlameState = currentFlame;
-    }
+  int currentFlame = digitalRead(PIN_FLAME_KITCHEN);
+  if (currentFlame != lastFlameState) {
+    bool isFire = (currentFlame == LOW);
+    JsonDocument doc; doc["deviceId"] = "kitchen_sensor_flame"; doc["detected"] = isFire; doc["value"] = isFire ? "CÓ LỬA" : "Không có lửa"; doc["status"] = isFire ? "Nguy hiểm" : "An toàn";
+    publishJson("home/tsmarthome/kitchen/flame/kitchen_sensor_flame/data", doc);
+    lastFlameState = currentFlame;
   }
 }
 
@@ -236,30 +226,37 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   if (deserializeJson(doc, msg)) return;
   String deviceId = doc["deviceId"] | "unknown";
 
-  // 1. TÍNH NĂNG BẬT/TẮT CÁC MODULE 
-  if (doc.containsKey("enable")) {
-    bool state = doc["enable"];
-    
-    if (deviceId == "entrance_sensor_pir") enablePirDoor = state;
+  if (doc.containsKey("state")) {
+    bool state = doc["state"];
+    String statusValue = state ? "Đang hoạt động" : "Đã tắt"; 
+    bool isHandled = true;
+
+    // --- PHÂN LOẠI LỆNH ĐIỀU KHIỂN ---
+    if (deviceId == "kitchen_light_main") {
+      digitalWrite(PIN_RELAY, state ? HIGH : LOW);
+      statusValue = state ? "Bật" : "Tắt"; 
+    }
+    // Lệnh cho Rèm Ban Công 1
+    else if (deviceId == "balcony1_curtain_main") {
+      targetCurtainAngle = state ? 180 : 0; // Cập nhật mục tiêu, hàm processCurtain() sẽ lo việc quay từ từ
+      statusValue = state ? "Mở" : "Đóng";
+    }
+    // Lệnh tắt/mở các Cảm biến 
+    else if (deviceId == "entrance_sensor_pir") enablePirDoor = state;
     else if (deviceId == "livingroom_sensor_pir") enablePirLiving = state;
     else if (deviceId == "livingroom_sensor_audio") enableMic = state;
-    else if (deviceId == "kitchen_sensor_flame") enableFlame = state;
     else if (deviceId == "livingroom_sensor_radar") enableRadar1 = state;
     else if (deviceId == "hallway_sensor_radar") enableRadar2 = state;
+    else {
+      isHandled = false; 
+    }
 
-    JsonDocument res; res["deviceId"] = deviceId; res["enable"] = state; res["value"] = state ? "Đang hoạt động" : "Đã tắt";
-    String statusTopic = tpc; statusTopic.replace("command", "status");
-    publishJson(statusTopic.c_str(), res);
-    return;
-  }
-
-  // 2. LỆNH ĐIỀU KHIỂN ĐÈN
-  if (deviceId == "kitchen_light_main" && doc.containsKey("state")) {
-    bool state = doc["state"];
-    digitalWrite(PIN_RELAY, state ? HIGH : LOW);
-    JsonDocument res; res["deviceId"] = deviceId; res["state"] = state; res["value"] = state ? "Bật" : "Tắt";
-    String statusTopic = tpc; statusTopic.replace("command", "status");
-    publishJson(statusTopic.c_str(), res);
+    // --- TRẢ VỀ STATUS CHUNG ---
+    if (isHandled) {
+      JsonDocument res; res["deviceId"] = deviceId; res["state"] = state; res["value"] = statusValue;
+      String statusTopic = tpc; statusTopic.replace("command", "status");
+      publishJson(statusTopic.c_str(), res);
+    }
   }
 }
 

@@ -37,6 +37,9 @@ public class Device {
     @Column(length = 50)
     private String status;
 
+    @Column(name = "state")
+    private Boolean state;
+
     @Column(name = "is_fake")
     private Boolean isFake;
 
