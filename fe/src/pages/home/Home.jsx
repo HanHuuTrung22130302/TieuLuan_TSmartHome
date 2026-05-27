@@ -14,7 +14,7 @@ import { getDeviceInfo } from '../../utils/deviceMapper';
 export default function Home() {
   const weather = useWeather();
   const [currentDate, setCurrentDate] = useState('');
-  const [timeFilter, setTimeFilter] = useState('12H'); 
+  const [timeFilter] = useState('1D'); // Đã fix cứng mặc định 1D
   const [moduleFilter, setModuleFilter] = useState('all');
   
   const [logs, setLogs] = useState([]);
@@ -38,7 +38,8 @@ export default function Home() {
   }, [timeFilter, moduleFilter, page]);
 
   useEffect(() => {
-    wsService.connect((rawData) => {
+    // Sửa lỗi xung đột WebSocket bằng cách hứng client trả về
+    const stompClient = wsService.connect((rawData) => {
       const dateObj = new Date(rawData.timestamp * 1000);
       const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour12: false });
       const dateStr = dateObj.toLocaleDateString('vi-VN');
@@ -63,13 +64,13 @@ export default function Home() {
     });
 
     return () => {
-      wsService.disconnect();
+      // Ngắt kết nối đúng client của trang Home khi bị unmount
+      wsService.disconnect(stompClient);
     };
   }, [moduleFilter, page]);
 
   const handleFilterChange = (type, value) => {
     if (type === 'module') setModuleFilter(value);
-    if (type === 'time') setTimeFilter(value);
     setPage(0);
   };
 
@@ -184,17 +185,7 @@ export default function Home() {
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                 </div>
-                <div className="flex bg-black border border-white/10 rounded-xl p-1">
-                  {['12H', '1D', '7D'].map(t => (
-                    <button 
-                      key={t}
-                      onClick={() => handleFilterChange('time', t)}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${timeFilter === t ? 'bg-[#e8f5a1] text-black shadow-md' : 'text-slate-500 hover:text-white'}`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
+                {/* Đã xóa cụm nút chọn bộ lọc thời gian ở đây */}
               </div>
             </div>
 

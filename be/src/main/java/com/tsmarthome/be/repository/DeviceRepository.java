@@ -21,4 +21,9 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
             @Param("deviceType") String deviceType,
             @Param("roomId") UUID roomId,
             @Param("state") Boolean state);
+
+    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r " +
+            "WHERE d.deviceType IN ('security', 'safety', 'radar') AND d.isFake = false " +
+            "ORDER BY d.createdAt DESC")
+    List<Device> findActiveSecurityDevices();
 }

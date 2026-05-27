@@ -50,11 +50,11 @@ public class DeviceService {
         deviceRepository.save(device);
 
         // 2. Cập nhật DeviceState (JSONB)
-        DeviceState state = deviceStateRepository.findById(device.getId())
-                .orElse(DeviceState.builder().device(device).deviceId(device.getId()).build());
-        state.setState(command);
-        state.setUpdatedAt(LocalDateTime.now());
-        deviceStateRepository.save(state);
+//        DeviceState state = deviceStateRepository.findById(device.getId())
+//                .orElse(DeviceState.builder().device(device).deviceId(device.getId()).build());
+//        state.setState(command);
+//        state.setUpdatedAt(LocalDateTime.now());
+//        deviceStateRepository.save(state);
 
         // 3. Đẩy WebSocket ngay lập tức để FE cập nhật UI 3D
         // Gắn thêm deviceId vào payload để FE biết cái nào vừa đổi
@@ -85,4 +85,6 @@ public class DeviceService {
         // Ghi chú: Đã xóa log ở đây vì bên MqttService.publishCommand đã có sẵn dòng log:
         // "Đã gửi lệnh tới ESP32 - Topic: ... | Lệnh: ..."
     }
+
+
 }

@@ -13,7 +13,7 @@ export const DEVICE_DICTIONARY = {
     icon: "Activity",
   },
   entrance_camera_s3: {
-    name: "Camera Cửa chính",
+    name: "Camera ESP32-S3",
     type: "camera",
     category: "security",
     icon: "Camera",
@@ -38,12 +38,29 @@ export const DEVICE_DICTIONARY = {
     category: "environment",
     icon: "Mic",
   },
+
+  // Radar cũ
   livingroom_sensor_radar: {
     name: "Radar P.Khách",
     type: "radar",
     category: "radar",
     icon: "Radar",
   },
+
+  // Radar mới
+  livingroom_sensor_radar2: {
+    name: "Radar Hàng 2",
+    type: "radar",
+    category: "radar",
+    icon: "Radar",
+  },
+  livingroom_sensor_radar3: {
+    name: "Radar Hàng 3",
+    type: "radar",
+    category: "radar",
+    icon: "Radar",
+  },
+
   livingroom_light_front: {
     name: "Đèn trần trước",
     type: "light",
@@ -71,13 +88,13 @@ export const DEVICE_DICTIONARY = {
 
   // ===== Kitchen =====
   kitchen_sensor_flame: {
-    name: "Cảm biến Lửa Bếp",
+    name: "Cảm biến Lửa",
     type: "flame",
     category: "safety",
     icon: "Flame",
   },
   kitchen_sensor_mq135: {
-    name: "Khí MQ-135 Bếp",
+    name: "Khí MQ-135",
     type: "gas",
     category: "environment",
     icon: "Wind",
@@ -97,7 +114,7 @@ export const DEVICE_DICTIONARY = {
     icon: "Activity",
   },
   hallway_sensor_radar: {
-    name: "Radar Hành lang",
+    name: "Radar hành lang",
     type: "radar",
     category: "radar",
     icon: "Radar",

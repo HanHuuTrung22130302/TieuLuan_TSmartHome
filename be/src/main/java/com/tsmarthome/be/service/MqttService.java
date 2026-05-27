@@ -23,13 +23,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class MqttService implements MqttCallback {
+public class MqttService implements MqttCallbackExtended {
 
     @Value("${mqtt.broker.url}")
     private String brokerUrl;
@@ -48,6 +50,28 @@ public class MqttService implements MqttCallback {
     private final DeviceLogRepository deviceLogRepository;
 
     private final Map<String, Device> deviceCache = new ConcurrentHashMap<>();
+    private final Object mqttLock = new Object();
+
+    private void subscribeTopics() throws MqttException {
+        mqttClient.subscribe("home/tsmarthome/+/+/+/data", 1);
+        mqttClient.subscribe("home/tsmarthome/+/+/+/status", 1);
+        log.info("Đã subscribe các topic /data và /status");
+    }
+
+    @Override
+    public void connectComplete(boolean reconnect, String serverURI) {
+        log.info("MQTT đã kết nối. reconnect={}, serverURI={}", reconnect, serverURI);
+        try {
+            subscribeTopics();
+
+            // Nếu là lần khởi động đầu tiên (không phải reconnect do mất mạng), tiến hành đồng bộ
+            if (!reconnect) {
+                syncDeviceStatesToIoT();
+            }
+        } catch (MqttException e) {
+            log.error("Lỗi subscribe/đồng bộ sau khi kết nối: {}", e.getMessage(), e);
+        }
+    }
 
     @PostConstruct
     public void connect() {
@@ -56,33 +80,61 @@ public class MqttService implements MqttCallback {
             MqttConnectOptions options = new MqttConnectOptions();
             options.setAutomaticReconnect(true);
             options.setCleanSession(true);
-            options.setConnectionTimeout(10);
+            options.setConnectionTimeout(1000);
 
             mqttClient.setCallback(this);
             mqttClient.connect(options);
             log.info("Đã kết nối thành công tới MQTT Broker: {}", brokerUrl);
-
-            mqttClient.subscribe("home/tsmarthome/+/+/+/data", 1);
-            mqttClient.subscribe("home/tsmarthome/+/+/+/status", 1);
-            log.info("Đã subscribe các topic /data và /status");
 
         } catch (MqttException e) {
             log.error("Lỗi kết nối MQTT: {}", e.getMessage());
         }
     }
 
-    @Override
-    public void messageArrived(String topic, MqttMessage message) throws Exception {
-        String payload = new String(message.getPayload());
-        Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
+    // --- HÀM MỚI: Đồng bộ trạng thái từ DB xuống IoT khi Backend chạy lại ---
+    public void syncDeviceStatesToIoT() {
+        log.info("Đang tiến hành đồng bộ State từ Database xuống các thiết bị IoT...");
+        List<Device> devices = deviceRepository.findAll();
 
-        if (topic.endsWith("/data")) {
-            handleSensorData(topic, data);
-        } else if (topic.endsWith("/status")) {
-            handleDeviceStatus(topic, data);
+        for (Device device : devices) {
+            // Chỉ gửi lệnh cho các thiết bị đang hoạt động (isFake = false) và có giá trị state
+            if (Boolean.FALSE.equals(device.getIsFake()) && device.getState() != null && device.getMqttTopic() != null) {
+                // Bỏ qua cảm biến môi trường (vì chúng chạy ngầm, không nhận lệnh)
+                if ("temperature".equals(device.getDeviceType()) || "air_quality".equals(device.getDeviceType())) {
+                    continue;
+                }
+
+                String commandTopic = device.getMqttTopic() + "/command";
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("deviceId", device.getName());
+                payload.put("state", device.getState());
+
+                publishCommand(commandTopic, payload);
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
+        log.info("Đã hoàn tất gửi lệnh đồng bộ khởi tạo hệ thống!");
+    }
 
-        // Đã xóa lệnh đẩy WebSocket ở đây để tránh gửi đúp (Double Push)
+    @Override
+    public void messageArrived(String topic, MqttMessage message) {
+        // LUÔN LUÔN BỌC TRY-CATCH ở đây để tránh sập service khi nhận JSON lỗi
+        try {
+            String payload = new String(message.getPayload());
+            Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
+
+            if (topic.endsWith("/data")) {
+                handleSensorData(topic, data);
+            } else if (topic.endsWith("/status")) {
+                handleDeviceStatus(topic, data);
+            }
+        } catch (Exception e) {
+            log.error("Lỗi xử lý payload MQTT tại {}: {}", topic, e.getMessage());
+        }
     }
 
     private Device getDeviceFromCache(String deviceName) {
@@ -99,8 +151,6 @@ public class MqttService implements MqttCallback {
         return device;
     }
 
-    // XỬ LÝ LƯU SENSOR DATA
-    // XỬ LÝ LƯU SENSOR DATA
     @Transactional
     protected void handleSensorData(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -116,9 +166,8 @@ public class MqttService implements MqttCallback {
                 needSaveDevice = true;
             }
 
-            // Cập nhật status (Bình thường, Cảnh báo, Nguy hiểm...) từ cục data
             if (data.containsKey("status")) {
-                device.setStatus((String) data.get("status"));
+                device.setStatus(String.valueOf(data.get("status")));
                 needSaveDevice = true;
             }
 
@@ -138,13 +187,25 @@ public class MqttService implements MqttCallback {
             }
 
             sensorDataRepository.save(sensorData);
-            log.info("Đã lưu dữ liệu Sensor vào DB cho thiết bị: {}", deviceName);
+
+            // --- LOGIC MỚI: LƯU VÀO BẢNG device_logs CHO CÁC CẢM BIẾN ---
+            String type = device.getDeviceType();
+            if ("safety".equals(type) || "environment".equals(type) || "security".equals(type) || "radar".equals(type)) {
+                String actionValue = data.containsKey("value") ? String.valueOf(data.get("value")) : "Ghi nhận dữ liệu";
+
+                DeviceLog logEntry = DeviceLog.builder()
+                        .device(device)
+                        .action(actionValue)
+                        .data(data)
+                        .createdAt(extractTimestamp(data))
+                        .build();
+                deviceLogRepository.save(logEntry);
+            }
 
             messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
         }
     }
 
-    // XỬ LÝ LƯU DEVICE STATUS
     @Transactional
     protected void handleDeviceStatus(String topic, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
@@ -160,15 +221,13 @@ public class MqttService implements MqttCallback {
                 needSaveDevice = true;
             }
 
-            // 1. Cập nhật biến Bật/Tắt (state)
             if (data.containsKey("state")) {
                 device.setState((Boolean) data.get("state"));
                 needSaveDevice = true;
             }
 
-            // 2. Cập nhật biến Status nếu ESP32 gửi kèm (Đã tắt, Đang bật...)
             if (data.containsKey("status")) {
-                device.setStatus((String) data.get("status"));
+                device.setStatus(String.valueOf(data.get("status")));
                 needSaveDevice = true;
             }
 
@@ -178,32 +237,23 @@ public class MqttService implements MqttCallback {
 
             LocalDateTime actionTime = extractTimestamp(data);
 
-            DeviceState stateObj = deviceStateRepository.findById(device.getId())
-                    .orElse(DeviceState.builder()
-                            .deviceId(device.getId())
-                            .device(device).build());
-
-            stateObj.setState(data);
-            stateObj.setUpdatedAt(actionTime);
+            // GHI NHẬN LỊCH SỬ VÀO BẢNG device_states (Đã sửa lỗi lưu đúp)
+            DeviceState stateObj = DeviceState.builder()
+                    .device(device)
+                    .state(data)
+                    .updatedAt(actionTime)
+                    .build();
             deviceStateRepository.save(stateObj);
 
-            // Xác định chuỗi Log
+            // Xác định hành động để in ra Log Console cho dễ debug
             String actionValue = "Cập nhật trạng thái";
             if (data.containsKey("value")) {
-                actionValue = (String) data.get("value");
+                actionValue = String.valueOf(data.get("value"));
             } else if (data.containsKey("state")) {
                 boolean isOn = (Boolean) data.get("state");
                 actionValue = isOn ? "Bật thiết bị/cảm biến" : "Tắt thiết bị/cảm biến";
             }
-
-            DeviceLog logEntry = DeviceLog.builder()
-                    .device(device)
-                    .action(actionValue)
-                    .data(data)
-                    .createdAt(actionTime)
-                    .build();
-            deviceLogRepository.save(logEntry);
-            log.info("Đã cập nhật Trạng thái & Log cho thiết bị: {} -> {}", deviceName, actionValue);
+            log.info("Đã cập nhật Trạng thái cho thiết bị: {} -> {}", deviceName, actionValue);
 
             messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
         }
@@ -218,20 +268,67 @@ public class MqttService implements MqttCallback {
     }
 
     public void publishCommand(String topic, Map<String, Object> payloadMap) {
+        String payloadJson;
+
         try {
-            String payloadJson = objectMapper.writeValueAsString(payloadMap);
-            MqttMessage message = new MqttMessage(payloadJson.getBytes());
-            message.setQos(1);
-            mqttClient.publish(topic, message);
-            log.info("Đã gửi lệnh tới ESP32 - Topic: {} | Lệnh: {}", topic, payloadJson);
+            payloadJson = objectMapper.writeValueAsString(payloadMap);
         } catch (Exception e) {
-            log.error("Lỗi gửi lệnh MQTT: {}", e.getMessage());
+            log.error("Lỗi convert payload MQTT: {}", e.getMessage(), e);
+            return;
         }
+
+        int maxRetry = 3;
+
+        for (int attempt = 1; attempt <= maxRetry; attempt++) {
+            try {
+                synchronized (mqttLock) {
+                    if (mqttClient == null) {
+                        log.warn("MQTT client chưa được khởi tạo. Thử lại lần {}/{}", attempt, maxRetry);
+                        Thread.sleep(500);
+                        continue;
+                    }
+
+                    if (!mqttClient.isConnected()) {
+                        log.warn("MQTT đang mất kết nối. Đang reconnect trước khi gửi lệnh... lần {}/{}", attempt, maxRetry);
+
+                        try {
+                            mqttClient.reconnect();
+                        } catch (MqttException reconnectError) {
+                            log.warn("Reconnect MQTT thất bại lần {}/{}: {}", attempt, maxRetry, reconnectError.getMessage());
+                            Thread.sleep(1000);
+                            continue;
+                        }
+                    }
+
+                    MqttMessage message = new MqttMessage(payloadJson.getBytes());
+                    message.setQos(1);
+                    message.setRetained(false);
+
+                    mqttClient.publish(topic, message);
+
+                    log.info("Đã gửi lệnh tới ESP32 - Topic: {} | Lệnh: {} | attempt={}", topic, payloadJson, attempt);
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("Gửi lệnh MQTT thất bại lần {}/{} - Topic: {} | Lỗi: {}",
+                        attempt, maxRetry, topic, e.getMessage());
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+
+        log.error("Gửi lệnh MQTT thất bại sau {} lần - Topic: {} | Payload: {}", maxRetry, topic, payloadJson);
     }
 
     @Override
     public void connectionLost(Throwable cause) {
-        log.warn("Mất kết nối MQTT! Đang thử lại...");
+        log.warn("Mất kết nối MQTT! Paho sẽ tự reconnect. Lý do: {}",
+                cause != null ? cause.getMessage() : "unknown");
     }
 
     @Override

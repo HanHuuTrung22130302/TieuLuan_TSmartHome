@@ -18,6 +18,11 @@ public class DeviceResponse {
     private String icon;
     private Double pos2dX;
     private Double pos2dY;
+
+    private Double pos3dX;
+    private Double pos3dY;
+    private Double pos3dZ;
+
     private UUID roomId;
     private String roomName;
 }

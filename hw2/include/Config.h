@@ -3,35 +3,30 @@
 
 #include <Arduino.h>
 
-static const char* WIFI_SSID     = "Thu Ha";
-static const char* WIFI_PASSWORD = "11081980";
-static const char* MQTT_BROKER   = "broker.emqx.io";
-static const int   MQTT_PORT     = 1883;
-static const char* MQTT_CLIENT_ID = "ESP32_TSmartHome_Node1";
+const char* WIFI_SSID     = "Thu Ha";
+const char* WIFI_PASSWORD = "11081980";
+const char* MQTT_BROKER   = "broker.emqx.io";
+const int   MQTT_PORT     = 1883;
+const char* MQTT_CLIENT_ID = "ESP32_TSmartHome_Node2"; // Đổi tên để không bị đá văng Node 1
 
-// --- PIN MAPPING ---
-#define PIN_DHT     4
-#define PIN_MQ135   34  // ADC1
-#define PIN_MIC     35  // ADC1 (Cho MAX9814)
-#define PIN_VOICE_DIG 14
+// ==========================================
+// PIN MAPPING - NODE 2 (Dùng các chân an toàn)
+// ==========================================
 
-#define PIN_PIR_DOOR 32
-#define PIN_PIR_LIVING 33
-#define PIN_FLAME_KITCHEN 13 // Chỉ giữ 1 Flame ở Bếp
-// #define PIN_REED_DOOR 27
-// #define PIN_REED_PN1 16
-// #define PIN_REED_PN2 17
-#define PIN_RELAY   22
+// --- 6 MODULE RELAY (ĐÈN) ---
+#define PIN_RELAY_FRONT_LIGHT   13 // Đèn trần trước
+#define PIN_RELAY_BACK_LIGHT    14 // Đèn trần sau
+#define PIN_RELAY_CEILING_LIGHT 25 // Đèn trần P.Khách
+#define PIN_RELAY_DINING_LIGHT  26 // Đèn phòng ăn
+#define PIN_RELAY_BALCONY_LIGHT 27 // Đèn Ban công 1
+#define PIN_RELAY_HALLWAY_LIGHT 33 // Đèn hành lang
 
-// --- RADAR 1 (Phòng Khách) ---
-#define PIN_SERVO_1 5
-#define PIN_TRIG_1 25
-#define PIN_ECHO_1 26
+// --- 2 RADAR TĨNH (HC-SR04) ---
+#define PIN_TRIG_RADAR2  19
+#define PIN_ECHO_RADAR2  21
 
-// --- RADAR 2 (Hành Lang) ---
-// #define PIN_SERVO_2 5
-#define PIN_TRIG_2 19
-#define PIN_ECHO_2 21
+#define PIN_TRIG_RADAR3  22
+#define PIN_ECHO_RADAR3  23
 
 // --- TOPICS ---
 const char* TOPIC_CMD_WILDCARD = "home/tsmarthome/+/+/+/command";

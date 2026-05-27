@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Flame, Wind, Activity, Radar, Volume2, Thermometer, 
-  Clock, MapPin, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Filter, CalendarDays
+  Clock, MapPin, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Filter, CalendarDays, Bell
 } from 'lucide-react';
 import { getWarningList, getWarningStats } from '../../services/api/warning';
+import wsService from '../../services/api/wsService';
+import { getDeviceInfo } from '../../utils/deviceMapper';
 
 export default function Notifications() {
   const [deviceType, setDeviceType] = useState('all');
@@ -51,6 +53,44 @@ export default function Notifications() {
   useEffect(() => {
     fetchWarnings();
   }, [page, deviceType, filterType, startDate, endDate]);
+
+  useEffect(() => {
+    const stompClient = wsService.connect((rawData) => {
+      if (filterType !== 'TODAY' || page !== 0) return;
+
+      const dateObj = new Date(rawData.timestamp * 1000);
+      const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour12: false });
+      const dateStr = dateObj.toLocaleDateString('vi-VN');
+      const deviceInfo = getDeviceInfo(rawData.deviceId);
+
+      const newLog = {
+        id: Date.now() + Math.random(),
+        deviceId: rawData.deviceId,
+        deviceName: deviceInfo.name || rawData.deviceId,
+        value: rawData.value,
+        status: rawData.status,
+        time: timeStr,
+        date: dateStr,
+        type: deviceInfo.type,
+        room: rawData.zone || 'Hệ thống'
+      };
+
+      if (newLog.status === 'Nguy hiểm') {
+        setStats(prev => ({ ...prev, danger: prev.danger + 1 }));
+      } else if (newLog.status === 'Cảnh báo') {
+        setStats(prev => ({ ...prev, warning: prev.warning + 1 }));
+      }
+
+      setLogs(prevLogs => {
+        if (deviceType !== 'all' && newLog.type !== deviceType) return prevLogs;
+        return [newLog, ...prevLogs].slice(0, 20); 
+      });
+    });
+
+    return () => {
+      wsService.disconnect(stompClient);
+    };
+  }, [deviceType, filterType, page]);
 
   useEffect(() => {
     if (filterType === 'SPECIFIC_MONTH') {
@@ -185,9 +225,9 @@ export default function Notifications() {
   };
 
   const getSeverityConfig = (status, type) => {
-    if (status === 'Nguy hiểm') return { icon: Flame, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/30' };
-    if (status === 'Cảnh báo') return { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/30' };
-    if (status === 'An toàn') return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
+    if (status === 'Nguy hiểm') return { icon: Flame, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-l-rose-500 border-white/5' };
+    if (status === 'Cảnh báo') return { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-l-amber-500 border-white/5' };
+    if (status === 'An toàn') return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500 border-white/5' };
     
     let FallbackIcon = Info;
     if (type === 'audio') FallbackIcon = Volume2;
@@ -195,76 +235,52 @@ export default function Notifications() {
     if (type === 'gas') FallbackIcon = Wind;
     if (type === 'radar' || type === 'pir') FallbackIcon = Radar;
     
-    return { icon: FallbackIcon, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/30' };
+    return { icon: FallbackIcon, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-l-blue-500 border-white/5' };
   };
 
   const calendarDays = buildCalendar();
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 h-[calc(100vh-4rem)]">
+      
+      <header className="mb-8">
+        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <Bell className="w-8 h-8 text-blue-500" /> Trung tâm Thông báo
+        </h2>
+        <p className="text-slate-500 mt-2">Theo dõi, lọc và phân tích lịch sử cảnh báo an ninh toàn hệ thống.</p>
+      </header>
+
+      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-10rem)]">
         
-        <div className="xl:col-span-2 flex flex-col bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
-          <div className="flex-1 overflow-y-auto p-6 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
-            {logs.length > 0 ? (
-              logs.map((n) => {
-                const config = getSeverityConfig(n.status, n.type);
-                const Icon = config.icon;
-
-                return (
-                  <div key={n.id} className="relative flex items-start gap-4 p-5 rounded-2xl border transition-all bg-white/[0.02] border-white/5 hover:bg-white/[0.04]">
-                    <div className={`p-3 rounded-xl shrink-0 ${config.bg}`}>
-                      <Icon className={`w-6 h-6 ${config.color}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-1.5">
-                        <h4 className="font-bold text-lg text-slate-300 truncate">
-                          {n.deviceName || n.deviceId}
-                        </h4>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono shrink-0">
-                          <Clock className="w-3 h-3" />
-                          {n.time} <span className="hidden sm:inline">•</span> {n.date}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                        <span className="text-sm font-medium text-slate-400">{n.room}</span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${config.bg} ${config.color} border ${config.border}`}>
-                          {n.status}
-                        </span>
-                        <div className="inline-flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
-                          <span className={`w-2 h-2 rounded-full ${config.color.replace('text-', 'bg-')}`}></span>
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Payload:</span>
-                          <strong className="text-sm text-white">{n.value}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500">
-                <ShieldCheck className="w-16 h-16 mb-4 opacity-20" />
-                <h4 className="text-xl font-bold text-white mb-2">Không có thông báo</h4>
-                <p className="text-sm text-center max-w-sm">Hệ thống đang hoạt động ổn định. Không có dữ liệu nào khớp với bộ lọc hiện tại.</p>
-              </div>
-            )}
-          </div>
+        {/* ================= CỘT TRÁI: THỐNG KÊ & BỘ LỌC (SIDEBAR) ================= */}
+        <div className="w-full lg:w-80 flex flex-col gap-6 shrink-0 overflow-y-auto pb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           
-          <div className="p-4 border-t border-white/5 bg-[#121212]">
-            {renderPagination()}
-          </div>
-        </div>
+          {/* Thống kê Card */}
+          <div className="flex gap-4 lg:flex-col shrink-0">
+            <div className="bg-gradient-to-br from-rose-900/40 to-black border border-rose-500/20 p-5 rounded-3xl relative overflow-hidden flex-1">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-rose-500/20 rounded-full blur-3xl pointer-events-none"></div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2 relative z-10">
+                <AlertTriangle className="w-4 h-4 text-rose-400" /> Nguy hiểm
+              </h3>
+              <p className="text-4xl font-black text-white relative z-10">{stats.danger}</p>
+            </div>
 
-        <div className="xl:col-span-1 flex flex-col gap-6">
-          <div className="bg-[#121212] border border-white/5 p-6 rounded-[2.5rem] shadow-2xl flex flex-col relative overflow-hidden">
-            <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-6">
-              <Filter className="w-5 h-5 text-blue-500" /> Bộ Lọc Nâng Cao
+            <div className="bg-gradient-to-br from-amber-900/40 to-black border border-amber-500/20 p-5 rounded-3xl relative overflow-hidden flex-1">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2 relative z-10">
+                <Activity className="w-4 h-4 text-amber-400" /> Cảnh báo
+              </h3>
+              <p className="text-4xl font-black text-white relative z-10">{stats.warning}</p>
+            </div>
+          </div>
+
+          {/* Bộ Lọc Điều hướng */}
+          <div className="bg-[#121212] border border-white/5 p-5 rounded-[2rem] flex flex-col gap-5 shadow-xl shrink-0">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Filter className="w-4 h-4 text-blue-500" /> Bộ Lọc Danh Sách
             </h3>
             
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4">
               <select 
                 value={deviceType}
                 onChange={(e) => { setDeviceType(e.target.value); setPage(0); }}
@@ -290,23 +306,23 @@ export default function Notifications() {
                 <option value="CUSTOM_RANGE">Khoảng thời gian</option>
               </select>
 
-              <div className="bg-white/5 border border-white/5 p-4 rounded-2xl flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                  <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+              <div className="bg-white/5 border border-white/5 p-3 rounded-2xl flex flex-col">
+                <div className="flex justify-between items-center mb-3">
+                  <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-white/10 rounded-md transition-colors">
                     <ChevronLeft className="w-4 h-4 text-slate-400" />
                   </button>
-                  <span className="font-bold text-sm text-slate-200">
+                  <span className="font-bold text-[13px] text-slate-200">
                     Tháng {viewDate.getMonth() + 1}, {viewDate.getFullYear()}
                   </span>
-                  <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                  <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-white/10 rounded-md transition-colors">
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
                 </div>
                 
                 {filterType !== 'SPECIFIC_MONTH' ? (
-                  <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                  <div className="grid grid-cols-7 gap-1 text-center">
                     {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(d => (
-                      <div key={d} className="text-[10px] text-slate-500 font-bold py-1">{d}</div>
+                      <div key={d} className="text-[9px] text-slate-500 font-bold py-1">{d}</div>
                     ))}
                     {calendarDays.map((d, i) => {
                       const isSpecific = filterType === 'SPECIFIC_DATE' && startDate === d.date;
@@ -331,9 +347,9 @@ export default function Notifications() {
                     })}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-32">
-                    <p className="text-xs font-bold text-blue-400 bg-blue-500/10 px-4 py-2 rounded-xl">
-                      Đang xem toàn bộ Tháng {viewDate.getMonth() + 1}
+                  <div className="flex items-center justify-center h-28">
+                    <p className="text-xs font-bold text-blue-400 bg-blue-500/10 px-4 py-2 rounded-xl text-center">
+                      Đang hiển thị toàn bộ<br/>Tháng {viewDate.getMonth() + 1}
                     </p>
                   </div>
                 )}
@@ -341,43 +357,77 @@ export default function Notifications() {
               
               {filterType === 'CUSTOM_RANGE' && (
                 <div className="flex flex-col items-center bg-black/40 border border-white/5 p-3 rounded-xl gap-2">
-                  <div className="text-xs font-bold text-slate-400 w-full flex justify-between">
+                  <div className="text-[11px] font-bold text-slate-400 w-full flex justify-between">
                     <span>Từ: {startDate || '--'}</span>
                     <span>Đến: {endDate || '--'}</span>
                   </div>
-                  {startDate && !endDate && <p className="text-[10px] text-blue-400 w-full">Vui lòng chọn ngày kết thúc...</p>}
+                  {startDate && !endDate && <p className="text-[10px] text-blue-400 w-full mt-1">Vui lòng chọn ngày kết thúc trên lịch...</p>}
                 </div>
               )}
             </div>
           </div>
-
-          <div className="bg-gradient-to-br from-rose-900/40 to-black border border-rose-500/20 p-6 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-rose-500/20 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="relative z-10 flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-rose-400" /> Cảnh báo Nguy hiểm
-              </h3>
-            </div>
-            <div className="relative z-10">
-              <p className="text-5xl font-black text-white">{stats.danger} <span className="text-lg font-medium text-rose-400">sự cố</span></p>
-              <p className="text-sm text-slate-400 mt-2">Cần kiểm tra ngay lập tức các thiết bị có trạng thái <span className="text-rose-400 font-bold">Nguy hiểm</span>.</p>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-amber-900/40 to-black border border-amber-500/20 p-6 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="relative z-10 flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Activity className="w-5 h-5 text-amber-400" /> Chú ý An ninh
-              </h3>
-            </div>
-            <div className="relative z-10">
-              <p className="text-5xl font-black text-white">{stats.warning} <span className="text-lg font-medium text-amber-400">cảnh báo</span></p>
-              <p className="text-sm text-slate-400 mt-2">Ghi nhận các chuyển động và trạng thái <span className="text-amber-400 font-bold">Bất thường</span> từ cảm biến.</p>
-            </div>
-          </div>
-
         </div>
+
+        {/* ================= CỘT PHẢI: KHU VỰC HIỂN THỊ DANH SÁCH ================= */}
+        <div className="flex-1 flex flex-col bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
+          
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+            {logs.length > 0 ? (
+              logs.map((n) => {
+                const config = getSeverityConfig(n.status, n.type);
+                const Icon = config.icon;
+
+                // Thẻ thông báo được làm phẳng (flat), nhấn nhá bằng thanh màu ở cạnh trái
+                return (
+                  <div key={n.id} className={`flex items-center gap-4 py-4 px-5 rounded-2xl bg-white/[0.02] border-l-4 border-y border-r transition-colors hover:bg-white/[0.04] ${config.border}`}>
+                    <div className={`p-3 rounded-xl shrink-0 ${config.bg}`}>
+                      <Icon className={`w-5 h-5 ${config.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-base text-slate-200 truncate">
+                            {n.deviceName || n.deviceId}
+                          </h4>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${config.bg} ${config.color}`}>
+                            {n.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" /> {n.room}
+                          </span>
+                          <span className="flex items-center gap-1 font-mono">
+                            <Clock className="w-3 h-3" /> {n.time} - {n.date}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="inline-flex items-center gap-2 bg-black/40 px-3 py-2 rounded-lg border border-white/5 shrink-0 self-start md:self-auto">
+                        <span className={`w-1.5 h-1.5 rounded-full ${config.color.replace('text-', 'bg-')}`}></span>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Payload:</span>
+                        <strong className="text-sm text-white">{n.value}</strong>
+                      </div>
+
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                <ShieldCheck className="w-16 h-16 mb-4 opacity-20" />
+                <h4 className="text-xl font-bold text-white mb-2">Không có thông báo</h4>
+                <p className="text-sm text-center max-w-sm">Hệ thống đang hoạt động ổn định. Không có dữ liệu nào khớp với bộ lọc hiện tại.</p>
+              </div>
+            )}
+          </div>
+          
+          <div className="p-4 border-t border-white/5 bg-black/20">
+            {renderPagination()}
+          </div>
+        </div>
+
       </div>
     </div>
   );

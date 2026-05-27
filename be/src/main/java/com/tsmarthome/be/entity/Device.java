@@ -62,4 +62,14 @@ public class Device {
 
     @Column(name = "pos_2d_y")
     private Double pos2dY;
+
+    // THÊM 3 CỘT CHO BẢN ĐỒ 3D
+    @Column(name = "pos_3d_x")
+    private Double pos3dX;
+
+    @Column(name = "pos_3d_y")
+    private Double pos3dY;
+
+    @Column(name = "pos_3d_z")
+    private Double pos3dZ;
 }
