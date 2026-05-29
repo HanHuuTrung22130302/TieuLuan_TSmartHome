@@ -1,25 +1,54 @@
 package com.tsmarthome.be.service;
 
 import com.tsmarthome.be.dto.assistant.response.AssistantChatResponse;
+import com.tsmarthome.be.dto.assistant.response.ChatHistoryResponse;
+import com.tsmarthome.be.entity.AssistantChat;
 import com.tsmarthome.be.entity.Device;
+import com.tsmarthome.be.repository.AssistantChatRepository;
 import com.tsmarthome.be.repository.DeviceRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.text.Normalizer;
-import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
+import java.util.*;
+
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AssistantService {
 
     private final GeminiService geminiService;
     private final DeviceRepository deviceRepository;
     private final DeviceManagementService deviceManagementService;
+    private final HomeSummaryService homeSummaryService;
+    private final AssistantChatRepository assistantChatRepository;
 
-    public AssistantChatResponse chat(String message) {
+
+    private boolean isHomeSummaryCommand(String msg) {
+        return containsAny(msg,
+                "tom tat hom nay",
+                "bao cao hom nay",
+                "tong hop hom nay",
+                "nha hom nay the nao",
+                "hom nay co canh bao gi",
+                "bao cao tinh hinh nha",
+                "tong hop tinh hinh nha",
+                "nhiet do hom nay",
+                "dht22 hom nay",
+                "radar hom nay",
+                "security hom nay",
+                "safety hom nay"
+        );
+    }
+    private AssistantChatResponse executeChatLogic(String message) {
+        log.info("ASSISTANT RAW MESSAGE FROM FE: {}", message);
+
         if (message == null || message.isBlank()) {
             return AssistantChatResponse.builder()
                     .reply("Bạn muốn tôi hỗ trợ gì cho ngôi nhà?")
@@ -30,29 +59,78 @@ public class AssistantService {
 
         String normalized = normalize(message);
 
+        if (isHomeSummaryCommand(normalized)) {
+            return homeSummaryService.summarizeToday();
+        }
+
+        if (isDeviceStateQuery(normalized)) {
+            return summarizeDeviceStatesWithGemini(message);
+        }
+
+        log.info("ASSISTANT NORMALIZED MESSAGE: {}", normalized);
+
         Boolean action = detectControlAction(normalized);
+        log.info("ASSISTANT DETECTED ACTION: {}", action);
+        AssistantChatResponse sceneResponse = handleSceneCommand(normalized);
+        if (sceneResponse != null) {
+            return sceneResponse;
+        }
 
+        // Nếu là lệnh bật/tắt/mở/đóng
         if (action != null) {
-            Device matchedDevice = findDeviceFromMessage(normalized);
 
-            if (matchedDevice == null) {
+            // Lệnh hàng loạt: tắt hết đèn, bật tất cả thiết bị điện...
+            if (isBulkCommand(normalized)) {
+                return handleBulkCommand(normalized, action);
+            }
+
+            // Lệnh nhiều thiết bị: bật đèn phòng khách và phòng ăn
+            AssistantChatResponse multiResponse = handleMultiDeviceCommand(normalized, action);
+            if (multiResponse != null) {
+                return multiResponse;
+            }
+
+
+            MatchResult matchResult = findTargetDevice(normalized);
+
+            if (matchResult.status == MatchStatus.NOT_FOUND) {
                 return AssistantChatResponse.builder()
-                        .reply("Tôi hiểu bạn muốn " + (action ? "bật" : "tắt") + " thiết bị, nhưng chưa xác định được thiết bị nào.")
+                        .reply("Tôi chưa xác định được thiết bị cần điều khiển. Bạn hãy nói rõ hơn, ví dụ: bật đèn hành lang, tắt đèn bếp, mở rèm ban công 1.")
                         .actionExecuted(false)
                         .actionType("CONTROL_DEVICE_NOT_FOUND")
                         .build();
             }
 
+            if (matchResult.status == MatchStatus.AMBIGUOUS) {
+                return AssistantChatResponse.builder()
+                        .reply("Tôi thấy có nhiều thiết bị phù hợp. Bạn hãy nói rõ hơn: " + String.join(", ", matchResult.suggestions) + ".")
+                        .actionExecuted(false)
+                        .actionType("CONTROL_DEVICE_AMBIGUOUS")
+                        .build();
+            }
+
+            Device matchedDevice = matchResult.device;
+
             try {
+                if (matchedDevice.getState() == null) {
+                    return AssistantChatResponse.builder()
+                            .reply(getDisplayName(matchedDevice) + " hiện không hỗ trợ bật/tắt.")
+                            .actionExecuted(false)
+                            .actionType("CONTROL_DEVICE_NOT_SUPPORTED")
+                            .build();
+                }
+
                 deviceManagementService.controlDevice(matchedDevice.getId(), action);
 
                 return AssistantChatResponse.builder()
-                        .reply("Đã gửi lệnh " + (action ? "bật " : "tắt ") + getDisplayName(matchedDevice) + ".")
+                        .reply("Đã gửi lệnh " + getActionText(action, normalized) + " " + getDisplayName(matchedDevice) + ".")
                         .actionExecuted(true)
                         .actionType("CONTROL_DEVICE")
                         .build();
 
             } catch (Exception e) {
+                log.error("ASSISTANT CONTROL DEVICE ERROR", e);
+
                 return AssistantChatResponse.builder()
                         .reply("Tôi chưa điều khiển được thiết bị này: " + e.getMessage())
                         .actionExecuted(false)
@@ -61,6 +139,7 @@ public class AssistantService {
             }
         }
 
+        // Không phải lệnh điều khiển thì gửi Gemini
         String geminiReply = geminiService.askGemini(message);
 
         return AssistantChatResponse.builder()
@@ -70,21 +149,56 @@ public class AssistantService {
                 .build();
     }
 
-    private Boolean detectControlAction(String normalizedMessage) {
+    @org.springframework.transaction.annotation.Transactional
+    public AssistantChatResponse chat(UUID userId, String message) {
+        log.info("BẮT ĐẦU LƯU ĐỐI THOẠI CHO USER [{}]: {}", userId, message);
+
+        // 1. Tự động lưu câu lệnh của Người dùng gửi lên vào DB
+        assistantChatRepository.save(AssistantChat.builder()
+                .userId(userId)
+                .message(message)
+                .isAssistant(false)
+                .actionType("USER_REQUEST")
+                .build());
+
+        // 2. Gọi lại CHÍNH XÁC cục logic cũ của bạn (nay đã đổi tên thành executeChatLogic)
+        AssistantChatResponse response = executeChatLogic(message);
+
+        // 3. Tự động lưu câu trả lời của AI (Gemini hoặc hệ thống) vào DB
+        assistantChatRepository.save(AssistantChat.builder()
+                .userId(userId)
+                .message(response.getReply())
+                .isAssistant(true)
+                .actionType(response.getActionType())
+                .build());
+
+        // 4. Trả kết quả về cho Controller hệt như cũ
+        return response;
+    }
+
+    // ==========================
+    // DETECT ACTION
+    // ==========================
+
+    private Boolean detectControlAction(String msg) {
         if (
-                normalizedMessage.contains("bat ") ||
-                        normalizedMessage.startsWith("bat") ||
-                        normalizedMessage.contains("mo ") ||
-                        normalizedMessage.startsWith("mo")
+                msg.startsWith("bat ") ||
+                        msg.equals("bat") ||
+                        msg.contains(" bat ") ||
+                        msg.startsWith("mo ") ||
+                        msg.equals("mo") ||
+                        msg.contains(" mo ")
         ) {
             return true;
         }
 
         if (
-                normalizedMessage.contains("tat ") ||
-                        normalizedMessage.startsWith("tat") ||
-                        normalizedMessage.contains("dong ") ||
-                        normalizedMessage.startsWith("dong")
+                msg.startsWith("tat ") ||
+                        msg.equals("tat") ||
+                        msg.contains(" tat ") ||
+                        msg.startsWith("dong ") ||
+                        msg.equals("dong") ||
+                        msg.contains(" dong ")
         ) {
             return false;
         }
@@ -92,45 +206,477 @@ public class AssistantService {
         return null;
     }
 
-    private Device findDeviceFromMessage(String normalizedMessage) {
-        List<Device> devices = deviceRepository.findAll();
+    private String getActionText(Boolean action, String msg) {
+        if (action == null) return "điều khiển";
 
-        Device bestMatch = null;
-        int bestScore = 0;
+        if (action) {
+            if (msg.contains("mo")) return "mở";
+            return "bật";
+        }
 
-        for (Device device : devices) {
-            int score = 0;
+        if (msg.contains("dong")) return "đóng";
+        return "tắt";
+    }
 
-            String name = normalize(device.getName());
-            String label = normalize(device.getLabel());
-            String type = normalize(device.getDeviceType());
+    // ==========================
+    // BULK COMMAND
+    // ==========================
 
-            if (!label.isBlank() && normalizedMessage.contains(label)) score += 100;
-            if (!name.isBlank() && normalizedMessage.contains(name)) score += 80;
+    private boolean isBulkCommand(String msg) {
+        return containsAny(msg,
+                "tat tat ca", "tat het", "tat toan bo",
+                "bat tat ca", "bat het", "bat toan bo",
+                "mo tat ca", "mo het",
+                "dong tat ca", "dong het"
+        );
+    }
 
-            if (type.equals("appliance") && containsAny(normalizedMessage, "den", "rem", "quat", "cua")) score += 20;
-            if (type.equals("radar") && normalizedMessage.contains("radar")) score += 20;
-            if (type.equals("security") && containsAny(normalizedMessage, "camera", "pir", "chuyen dong")) score += 20;
+    private AssistantChatResponse handleBulkCommand(String msg, boolean action) {
+        List<Device> targetDevices = new ArrayList<>();
 
-            if (label.contains("phong khach") && normalizedMessage.contains("phong khach")) score += 25;
-            if (label.contains("bep") && normalizedMessage.contains("bep")) score += 25;
-            if (label.contains("hanh lang") && normalizedMessage.contains("hanh lang")) score += 25;
-            if (label.contains("ban cong") && normalizedMessage.contains("ban cong")) score += 25;
-            if (label.contains("cua") && normalizedMessage.contains("cua")) score += 25;
+        List<Device> allDevices = deviceRepository.findAll();
 
-            if (label.contains("den") && normalizedMessage.contains("den")) score += 30;
-            if (label.contains("rem") && normalizedMessage.contains("rem")) score += 30;
-            if (label.contains("radar") && normalizedMessage.contains("radar")) score += 30;
-            if (label.contains("camera") && normalizedMessage.contains("camera")) score += 30;
+        // Tất cả thiết bị điện / đồ điện
+        if (containsAny(msg, "thiet bi dien", "do dien", "thiet bi", "appliance")) {
+            targetDevices = allDevices.stream()
+                    .filter(d -> d.getState() != null)
+                    .filter(d -> normalize(d.getDeviceType()).equals("appliance"))
+                    .toList();
+        }
+        // Tất cả đèn
+        else if (containsAny(msg, "den", "bong den", "light")) {
+            targetDevices = allDevices.stream()
+                    .filter(d -> d.getState() != null)
+                    .filter(d -> {
+                        String name = normalize(d.getName());
+                        String label = normalize(d.getLabel());
+                        return name.contains("light") || label.contains("den");
+                    })
+                    .toList();
+        }
+        // Tất cả rèm
+        else if (containsAny(msg, "rem", "curtain")) {
+            targetDevices = allDevices.stream()
+                    .filter(d -> d.getState() != null)
+                    .filter(d -> {
+                        String name = normalize(d.getName());
+                        String label = normalize(d.getLabel());
+                        return name.contains("curtain") || label.contains("rem");
+                    })
+                    .toList();
+        }
 
-            if (score > bestScore) {
-                bestScore = score;
-                bestMatch = device;
+        if (targetDevices.isEmpty()) {
+            return AssistantChatResponse.builder()
+                    .reply("Tôi hiểu bạn muốn điều khiển nhiều thiết bị, nhưng chưa rõ nhóm nào. Bạn có thể nói: tắt hết đèn, bật tất cả thiết bị điện, mở hết rèm.")
+                    .actionExecuted(false)
+                    .actionType("BULK_CONTROL_GROUP_NOT_FOUND")
+                    .build();
+        }
+
+        int success = 0;
+        int failed = 0;
+
+        for (Device device : targetDevices) {
+            try {
+                deviceManagementService.controlDevice(device.getId(), action);
+                success++;
+
+                // Delay nhẹ để MQTT/ESP32 đỡ bị dồn lệnh quá nhanh
+                Thread.sleep(100);
+            } catch (Exception e) {
+                failed++;
+                log.warn("ASSISTANT BULK CONTROL FAILED: device={}, error={}", device.getName(), e.getMessage());
             }
         }
 
-        return bestScore >= 30 ? bestMatch : null;
+        return AssistantChatResponse.builder()
+                .reply("Đã gửi lệnh " + getActionText(action, msg) + " " + success + " thiết bị. " +
+                        (failed > 0 ? "Có " + failed + " thiết bị chưa điều khiển được." : ""))
+                .actionExecuted(success > 0)
+                .actionType("BULK_CONTROL")
+                .build();
     }
+
+    private AssistantChatResponse handleMultiDeviceCommand(String msg, boolean action) {
+        // Chỉ xử lý multi khi câu có dấu hiệu liệt kê
+        if (!containsAny(msg, " va ", " voi ", " cung ", ",")) {
+            return null;
+        }
+
+        List<DeviceTarget> targets = buildDeviceTargets();
+        List<DeviceTarget> matchedTargets = new ArrayList<>();
+
+        for (DeviceTarget target : targets) {
+            for (String alias : target.aliases) {
+                String normalizedAlias = normalize(alias);
+
+                if (!normalizedAlias.isBlank() && msg.contains(normalizedAlias)) {
+                    matchedTargets.add(target);
+                    break;
+                }
+            }
+        }
+
+        // Không đủ 2 thiết bị thì để logic single device xử lý tiếp
+        if (matchedTargets.size() < 2) {
+            return null;
+        }
+
+        // Loại trùng deviceName
+        List<DeviceTarget> uniqueTargets = matchedTargets.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        t -> t.deviceName,
+                        t -> t,
+                        (a, b) -> a
+                ))
+                .values()
+                .stream()
+                .toList();
+
+        int success = 0;
+        int failed = 0;
+        List<String> controlledNames = new ArrayList<>();
+
+        for (DeviceTarget target : uniqueTargets) {
+            Optional<Device> optionalDevice = deviceRepository.findByName(target.deviceName);
+
+            if (optionalDevice.isEmpty()) {
+                failed++;
+                continue;
+            }
+
+            Device device = optionalDevice.get();
+
+            if (device.getState() == null) {
+                failed++;
+                continue;
+            }
+
+            try {
+                deviceManagementService.controlDevice(device.getId(), action);
+                success++;
+                controlledNames.add(getDisplayName(device));
+
+                Thread.sleep(100);
+            } catch (Exception e) {
+                failed++;
+                log.warn("ASSISTANT MULTI CONTROL FAILED: device={}, error={}", device.getName(), e.getMessage());
+            }
+        }
+
+        if (success == 0) {
+            return AssistantChatResponse.builder()
+                    .reply("Tôi nhận ra nhiều thiết bị, nhưng chưa điều khiển được thiết bị nào.")
+                    .actionExecuted(false)
+                    .actionType("MULTI_CONTROL_FAILED")
+                    .build();
+        }
+
+        return AssistantChatResponse.builder()
+                .reply("Đã gửi lệnh " + getActionText(action, msg) + " cho: " + String.join(", ", controlledNames) + ". " +
+                        (failed > 0 ? "Có " + failed + " thiết bị chưa điều khiển được." : ""))
+                .actionExecuted(true)
+                .actionType("MULTI_CONTROL")
+                .build();
+    }
+
+    // ==========================
+    // DEVICE MATCHING
+    // ==========================
+
+    // ==========================
+// SCENE COMMANDS
+// ==========================
+
+    private AssistantChatResponse handleSceneCommand(String msg) {
+        // Bỏ wake word để câu dễ match hơn
+        msg = removeWakeWord(msg);
+
+        if (isHomeArrivalScene(msg) || isDarkScene(msg)) {
+            return controlAllLights(true, "Đã bật toàn bộ đèn trong nhà. Chào mừng bạn về nhà.");
+        }
+
+        if (isLeavingScene(msg) || isMorningScene(msg)) {
+            return controlAllLights(false, "Đã tắt toàn bộ đèn trong nhà. Chúc bạn một ngày tốt lành.");
+        }
+
+        return null;
+    }
+
+    private String removeWakeWord(String msg) {
+        return msg
+                .replace("hey tsmart", "")
+                .replace("hey smart", "")
+                .replace("tsmart", "")
+                .replace("t smart", "")
+                .trim();
+    }
+
+    private boolean isHomeArrivalScene(String msg) {
+        return containsAny(msg,
+                "toi da ve nha",
+                "toi ve nha roi",
+                "minh ve nha roi",
+                "ve nha roi",
+                "toi ve roi",
+                "da ve nha"
+        );
+    }
+
+    private boolean isDarkScene(String msg) {
+        return containsAny(msg,
+                "troi toi roi",
+                "toi roi",
+                "troi dang toi",
+                "den gio bat den",
+                "nha toi qua"
+        );
+    }
+
+    private boolean isLeavingScene(String msg) {
+        return containsAny(msg,
+                "toi di day",
+                "toi di day nha",
+                "toi di lam",
+                "toi ra ngoai",
+                "toi ra khoi nha",
+                "di lam day",
+                "di day",
+                "vang nha"
+        );
+    }
+
+    private boolean isMorningScene(String msg) {
+        return containsAny(msg,
+                "troi sang roi",
+                "sang roi",
+                "troi da sang",
+                "den sang roi",
+                "tat den di"
+        );
+    }
+
+    private AssistantChatResponse controlAllLights(boolean action, String successReply) {
+        List<String> lightDeviceNames = List.of(
+                "livingroom_light_front",
+                "livingroom_light_back",
+                "livingroom_light_ceiling",
+                "livingroom_light_dining",
+                "kitchen_light_main",
+                "hallway_light_main",
+                "balcony1_light_main",
+                "balcony2_light_main",
+                "bedroom1_light_main",
+                "bedroom2_light_main",
+                "bedroom3_light_main",
+                "wc1_light_main",
+                "wc2_light_main",
+                "wc3_light_main"
+        );
+
+        int success = 0;
+        int failed = 0;
+
+        for (String deviceName : lightDeviceNames) {
+            Optional<Device> optionalDevice = deviceRepository.findByName(deviceName);
+
+            if (optionalDevice.isEmpty()) {
+                failed++;
+                continue;
+            }
+
+            Device device = optionalDevice.get();
+
+            if (device.getState() == null) {
+                failed++;
+                continue;
+            }
+
+            try {
+                deviceManagementService.controlDevice(device.getId(), action);
+                success++;
+            } catch (Exception e) {
+                failed++;
+                log.warn("ASSISTANT SCENE CONTROL FAILED: device={}, error={}", deviceName, e.getMessage());
+            }
+        }
+
+        String reply = successReply + " Đã gửi lệnh cho " + success + " đèn.";
+        if (failed > 0) {
+            reply += " Có " + failed + " đèn chưa điều khiển được.";
+        }
+
+        return AssistantChatResponse.builder()
+                .reply(reply)
+                .actionExecuted(success > 0)
+                .actionType(action ? "SCENE_HOME_LIGHTS_ON" : "SCENE_LEAVE_LIGHTS_OFF")
+                .build();
+    }
+
+    private MatchResult findTargetDevice(String msg) {
+        List<DeviceTarget> targets = buildDeviceTargets();
+
+        List<DeviceTarget> matches = new ArrayList<>();
+
+        for (DeviceTarget target : targets) {
+            for (String alias : target.aliases) {
+                if (msg.contains(normalize(alias))) {
+                    matches.add(target);
+                    break;
+                }
+            }
+        }
+
+        log.info("ASSISTANT MATCH COUNT: {}", matches.size());
+
+        for (DeviceTarget target : matches) {
+            log.info("ASSISTANT MATCH TARGET: deviceName={}, displayName={}", target.deviceName, target.displayName);
+        }
+
+        if (matches.isEmpty()) {
+            return MatchResult.notFound();
+        }
+
+        // Nếu match đúng 1 thiết bị
+        if (matches.size() == 1) {
+            Optional<Device> optionalDevice = deviceRepository.findByName(matches.get(0).deviceName);
+
+            if (optionalDevice.isEmpty()) {
+                return MatchResult.notFound();
+            }
+
+            return MatchResult.found(optionalDevice.get());
+        }
+
+        // Nếu nhiều match, thử ưu tiên alias dài hơn / cụ thể hơn
+        DeviceTarget best = chooseMostSpecificTarget(msg, matches);
+
+        if (best != null) {
+            Optional<Device> optionalDevice = deviceRepository.findByName(best.deviceName);
+
+            if (optionalDevice.isPresent()) {
+                return MatchResult.found(optionalDevice.get());
+            }
+        }
+
+        List<String> suggestions = matches.stream()
+                .map(t -> t.displayName)
+                .distinct()
+                .limit(5)
+                .toList();
+
+        return MatchResult.ambiguous(suggestions);
+    }
+
+    private DeviceTarget chooseMostSpecificTarget(String msg, List<DeviceTarget> matches) {
+        DeviceTarget best = null;
+        int bestScore = 0;
+        boolean tied = false;
+
+        for (DeviceTarget target : matches) {
+            int score = 0;
+
+            for (String alias : target.aliases) {
+                String normalizedAlias = normalize(alias);
+                if (msg.contains(normalizedAlias)) {
+                    score = Math.max(score, normalizedAlias.length());
+                }
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = target;
+                tied = false;
+            } else if (score == bestScore) {
+                tied = true;
+            }
+        }
+
+        if (tied) return null;
+        return best;
+    }
+
+    private List<DeviceTarget> buildDeviceTargets() {
+        List<DeviceTarget> list = new ArrayList<>();
+
+        // ================= ĐÈN PHÒNG KHÁCH / BẾP =================
+        list.add(new DeviceTarget("livingroom_light_front", "Đèn trần trước",
+                "den tran truoc", "den truoc", "den phong khach truoc", "den khach truoc", "den livingroom front"));
+
+        list.add(new DeviceTarget("livingroom_light_ceiling", "Đèn trần phòng khách",
+                "den tran phong khach", "den tran p khach", "den phong khach", "den p khach", "den khach",
+                "phong khach", "p khach", "khach", "den ceiling"));
+
+        list.add(new DeviceTarget("livingroom_light_dining", "Đèn phòng ăn",
+                "den phong an", "den ban an", "den khu an", "den dining",
+                "phong an", "ban an", "khu an"));
+        list.add(new DeviceTarget("livingroom_light_dining", "Đèn phòng ăn",
+                "den phong an", "den ban an", "den khu an", "den dining"));
+
+        list.add(new DeviceTarget("kitchen_light_main", "Đèn bếp",
+                "den bep", "den phong bep", "den kitchen"));
+
+        // ================= HÀNH LANG =================
+        list.add(new DeviceTarget("hallway_light_main", "Đèn hành lang",
+                "den hanh lang", "den hallway"));
+
+        // ================= BAN CÔNG =================
+        list.add(new DeviceTarget("balcony1_light_main", "Đèn ban công 1",
+                "den ban cong 1", "den balcony 1", "den balcony1", "den ban cong mot"));
+
+        list.add(new DeviceTarget("balcony2_light_main", "Đèn ban công 2",
+                "den ban cong 2", "den balcony 2", "den balcony2", "den ban cong hai"));
+
+        list.add(new DeviceTarget("balcony1_curtain_main", "Rèm ban công 1",
+                "rem ban cong 1", "rem balcony 1", "rem balcony1", "rem ban cong mot", "rem cua ban cong 1"));
+
+        // ================= PHÒNG NGỦ =================
+        list.add(new DeviceTarget("bedroom1_light_main", "Đèn phòng ngủ 1",
+                "den phong ngu 1", "den pn1", "den phong 1", "den bedroom 1", "den bedroom1"));
+
+        list.add(new DeviceTarget("bedroom2_light_main", "Đèn phòng ngủ 2",
+                "den phong ngu 2", "den pn2", "den phong 2", "den bedroom 2", "den bedroom2"));
+
+        list.add(new DeviceTarget("bedroom3_light_main", "Đèn phòng ngủ 3",
+                "den phong ngu 3", "den pn3", "den phong 3", "den bedroom 3", "den bedroom3"));
+
+        // ================= WC =================
+        list.add(new DeviceTarget("wc1_light_main", "Đèn WC 1",
+                "den wc 1", "den nha ve sinh 1", "den ve sinh 1", "den toilet 1", "den wc1"));
+
+        list.add(new DeviceTarget("wc2_light_main", "Đèn WC 2",
+                "den wc 2", "den nha ve sinh 2", "den ve sinh 2", "den toilet 2", "den wc2"));
+
+        list.add(new DeviceTarget("wc3_light_main", "Đèn WC 3",
+                "den wc 3", "den nha ve sinh 3", "den ve sinh 3", "den toilet 3", "den wc3"));
+
+        // ================= THIẾT BỊ KHÁC =================
+        list.add(new DeviceTarget("global_safety_buzzer", "Còi Buzzer",
+                "coi", "coi bao dong", "buzzer", "chuong bao dong"));
+
+        list.add(new DeviceTarget("global_appliance_tv", "TV",
+                "tv", "ti vi", "tivi"));
+
+        // Radar nếu bạn vẫn muốn cho điều khiển bật/tắt
+        list.add(new DeviceTarget("livingroom_sensor_radar", "Radar phòng khách hàng 1",
+                "radar phong khach 1", "radar hang 1", "radar khach 1"));
+
+        list.add(new DeviceTarget("livingroom_sensor_radar2", "Radar phòng khách hàng 2",
+                "radar phong khach 2", "radar hang 2", "radar khach 2"));
+
+        list.add(new DeviceTarget("livingroom_sensor_radar3", "Radar phòng khách hàng 3",
+                "radar phong khach 3", "radar hang 3", "radar khach 3"));
+
+        list.add(new DeviceTarget("hallway_sensor_radar", "Radar hành lang",
+                "radar hanh lang", "radar hallway"));
+
+        return list;
+    }
+
+    // ==========================
+    // UTILS
+    // ==========================
 
     private String getDisplayName(Device device) {
         if (device.getLabel() != null && !device.getLabel().isBlank()) {
@@ -141,7 +687,9 @@ public class AssistantService {
 
     private boolean containsAny(String source, String... keywords) {
         for (String keyword : keywords) {
-            if (source.contains(keyword)) return true;
+            if (source.contains(normalize(keyword))) {
+                return true;
+            }
         }
         return false;
     }
@@ -153,7 +701,6 @@ public class AssistantService {
 
         text = Normalizer.normalize(text, Normalizer.Form.NFD);
         text = text.replaceAll("\\p{M}", "");
-
         text = text.replace("đ", "d");
 
         text = text.replaceAll("[^a-z0-9_\\s]", " ");
@@ -161,4 +708,175 @@ public class AssistantService {
 
         return text.trim();
     }
+
+    private static class DeviceTarget {
+        private final String deviceName;
+        private final String displayName;
+        private final List<String> aliases;
+
+        public DeviceTarget(String deviceName, String displayName, String... aliases) {
+            this.deviceName = deviceName;
+            this.displayName = displayName;
+            this.aliases = List.of(aliases);
+        }
+    }
+
+    private enum MatchStatus {
+        FOUND,
+        NOT_FOUND,
+        AMBIGUOUS
+    }
+
+    private static class MatchResult {
+        private final MatchStatus status;
+        private final Device device;
+        private final List<String> suggestions;
+
+        private MatchResult(MatchStatus status, Device device, List<String> suggestions) {
+            this.status = status;
+            this.device = device;
+            this.suggestions = suggestions;
+        }
+
+        static MatchResult found(Device device) {
+            return new MatchResult(MatchStatus.FOUND, device, List.of());
+        }
+
+        static MatchResult notFound() {
+            return new MatchResult(MatchStatus.NOT_FOUND, null, List.of());
+        }
+
+        static MatchResult ambiguous(List<String> suggestions) {
+            return new MatchResult(MatchStatus.AMBIGUOUS, null, suggestions);
+        }
+    }
+
+    public List<ChatHistoryResponse> getUserChatHistoryLazy(UUID userId, int page) {
+        // Mỗi trang lấy đúng 20 tin nhắn
+        Pageable pageable = PageRequest.of(page, 20);
+
+        // Kéo dữ liệu từ DB (tin nhắn mới nhất sẽ nằm đầu danh sách)
+        List<AssistantChat> chats = assistantChatRepository.findByUserIdPageable(userId, pageable);
+
+        // Convert sang DTO
+        List<ChatHistoryResponse> responseList = chats.stream().map(c -> ChatHistoryResponse.builder()
+                .id(c.getId())
+                .message(c.getMessage())
+                .isAssistant(c.getIsAssistant())
+                .actionType(c.getActionType())
+                .createdAt(c.getCreatedAt())
+                .build()
+        ).collect(Collectors.toList());
+
+        // ĐẢO NGƯỢC LẠI danh sách để tin nhắn cũ lên đầu, tin nhắn mới xuống cuối (chuẩn UI chat)
+        Collections.reverse(responseList);
+
+        return responseList;
+    }
+
+    private boolean isDeviceStateQuery(String msg) {
+        return containsAny(msg,
+                "trang thai thiet bi",
+                "trang thai cac thiet bi",
+                "thiet bi nao dang bat",
+                "thiet bi nao dang tat",
+                "nha co thiet bi nao dang bat",
+                "nha co thiet bi nao dang tat",
+                "kiem tra thiet bi",
+                "kiem tra trang thai",
+                "bao cao trang thai thiet bi",
+                "danh sach thiet bi dang bat",
+                "danh sach thiet bi dang tat",
+                "state thiet bi"
+        );
+    }
+
+    private AssistantChatResponse summarizeDeviceStatesWithGemini(String userMessage) {
+        List<Device> devices = deviceRepository.findAll().stream()
+                .filter(d -> Boolean.FALSE.equals(d.getIsFake()))
+                .filter(d -> d.getState() != null)
+                .toList();
+
+        if (devices.isEmpty()) {
+            return AssistantChatResponse.builder()
+                    .reply("Hiện chưa có thiết bị thật nào có trạng thái bật/tắt để báo cáo.")
+                    .actionExecuted(false)
+                    .actionType("DEVICE_STATE_SUMMARY")
+                    .build();
+        }
+
+        long onCount = devices.stream().filter(d -> Boolean.TRUE.equals(d.getState())).count();
+        long offCount = devices.stream().filter(d -> Boolean.FALSE.equals(d.getState())).count();
+
+        StringBuilder deviceList = new StringBuilder();
+
+        for (Device d : devices) {
+            deviceList.append("- ")
+                    .append(getDisplayName(d))
+                    .append(" | name: ")
+                    .append(d.getName())
+                    .append(" | type: ")
+                    .append(d.getDeviceType())
+                    .append(" | state: ")
+                    .append(Boolean.TRUE.equals(d.getState()) ? "Bật" : "Tắt")
+                    .append(" | status: ")
+                    .append(d.getStatus())
+                    .append("\n");
+        }
+
+        String prompt = """
+            Bạn là trợ lý AI của hệ thống nhà thông minh TSmartHome.
+            Dưới đây là dữ liệu thật từ bảng devices, chỉ gồm các thiết bị isFake = false và có state bật/tắt.
+
+            Người dùng hỏi:
+            %s
+
+            Tổng quan:
+            - Tổng số thiết bị có thể bật/tắt: %d
+            - Đang bật: %d
+            - Đang tắt: %d
+
+            Danh sách thiết bị:
+            %s
+
+            Hãy trả lời ngắn gọn bằng tiếng Việt.
+            Nếu người dùng hỏi thiết bị nào đang bật thì liệt kê thiết bị đang bật.
+            Nếu người dùng hỏi thiết bị nào đang tắt thì liệt kê thiết bị đang tắt.
+            Nếu người dùng hỏi tổng quan thì tóm tắt số lượng bật/tắt và nêu vài thiết bị nổi bật.
+            Không bịa thêm thiết bị ngoài danh sách.
+            """.formatted(userMessage, devices.size(), onCount, offCount, deviceList);
+
+        String geminiReply = geminiService.askGemini(prompt);
+
+        // Fallback nếu Gemini lỗi 503 hoặc lỗi API
+        if (geminiReply == null
+                || geminiReply.contains("Gemini đang tạm thời")
+                || geminiReply.contains("Lỗi khi gọi Gemini")
+                || geminiReply.contains("Gemini phản hồi lỗi")) {
+
+            String onDevices = devices.stream()
+                    .filter(d -> Boolean.TRUE.equals(d.getState()))
+                    .map(this::getDisplayName)
+                    .collect(Collectors.joining(", "));
+
+            String offDevices = devices.stream()
+                    .filter(d -> Boolean.FALSE.equals(d.getState()))
+                    .map(this::getDisplayName)
+                    .collect(Collectors.joining(", "));
+
+            geminiReply = "Hiện có " + devices.size() + " thiết bị thật có trạng thái bật/tắt. "
+                    + "Đang bật: " + onCount + " thiết bị"
+                    + (onDevices.isBlank() ? "" : " gồm " + onDevices)
+                    + ". Đang tắt: " + offCount + " thiết bị"
+                    + (offDevices.isBlank() ? "" : " gồm " + offDevices)
+                    + ".";
+        }
+
+        return AssistantChatResponse.builder()
+                .reply(geminiReply)
+                .actionExecuted(false)
+                .actionType("DEVICE_STATE_SUMMARY")
+                .build();
+    }
+
 }

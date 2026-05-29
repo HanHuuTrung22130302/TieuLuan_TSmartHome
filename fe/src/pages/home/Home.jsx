@@ -38,7 +38,6 @@ export default function Home() {
   }, [timeFilter, moduleFilter, page]);
 
   useEffect(() => {
-    // Sửa lỗi xung đột WebSocket bằng cách hứng client trả về
     const stompClient = wsService.connect((rawData) => {
       const dateObj = new Date(rawData.timestamp * 1000);
       const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour12: false });
@@ -64,7 +63,6 @@ export default function Home() {
     });
 
     return () => {
-      // Ngắt kết nối đúng client của trang Home khi bị unmount
       wsService.disconnect(stompClient);
     };
   }, [moduleFilter, page]);
@@ -72,56 +70,6 @@ export default function Home() {
   const handleFilterChange = (type, value) => {
     if (type === 'module') setModuleFilter(value);
     setPage(0);
-  };
-
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-
-    let pages = [];
-    const maxVisiblePages = 5;
-
-    let startPage = Math.max(0, page - Math.floor(maxVisiblePages / 2));
-    let endPage = Math.min(totalPages - 1, startPage + maxVisiblePages - 1);
-
-    if (endPage - startPage + 1 < maxVisiblePages) {
-      startPage = Math.max(0, endPage - maxVisiblePages + 1);
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(
-        <button
-          key={i}
-          onClick={() => setPage(i)}
-          className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold transition-colors ${
-            page === i 
-              ? 'bg-blue-600 text-white' 
-              : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
-          }`}
-        >
-          {i + 1}
-        </button>
-      );
-    }
-
-    return (
-      <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-white/5 shrink-0">
-        <button 
-          onClick={() => setPage(p => Math.max(0, p - 1))}
-          disabled={page === 0}
-          className="p-2 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        {pages}
-        <button 
-          onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-          disabled={page >= totalPages - 1}
-          className="p-2 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    );
   };
 
   const getLogStyle = (log) => {
@@ -137,10 +85,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto overflow-x-hidden font-sans">
+      
+      {/* ================= HEADER ================= */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
         <div>
           <p className="text-slate-500 font-bold tracking-widest text-xs uppercase mb-1">{currentDate}</p>
-          <h2 className="text-3xl font-bold tracking-tight">Welcome <span className="font-normal">Trung</span></h2>
+          <h2 className="text-3xl font-bold tracking-tight">Bảng thông báo</h2>
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex items-center bg-white/5 border border-white/10 rounded-full px-4 py-2.5 flex-1 md:w-80">
@@ -160,35 +110,59 @@ export default function Home() {
         </div>
       </header>
 
+      {/* ================= MAIN LAYOUT ================= */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        
+        {/* === CỘT TRÁI: DANH SÁCH THÔNG BÁO LOGS === */}
         <div className="xl:col-span-2 flex flex-col gap-6">
           <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-6 shadow-2xl flex flex-col h-[600px] xl:h-[calc(100vh-10rem)]">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
-              <div>
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-500" /> Nhật ký Hoạt động
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">Dữ liệu từ payload cảm biến (Real-time)</p>
+            
+            {/* THANH ĐIỀU HƯỚNG CỦA CARD (XÓA CHỮ VÀ DỜI FILTER SANG TRÁI) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 shrink-0">
+              
+              {/* Filter nằm bên trái */}
+              <div className="relative">
+                <select 
+                  value={moduleFilter}
+                  onChange={(e) => handleFilterChange('module', e.target.value)}
+                  className="appearance-none bg-black border border-white/10 text-slate-300 text-sm font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors w-44"
+                >
+                  <option value="all">Tất cả Module</option>
+                  <option value="radar">Radar</option>
+                  <option value="environment">Môi trường</option>
+                  <option value="safety">An toàn (Lửa/Khí)</option>
+                  <option value="security">An ninh (Cửa/PIR)</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative">
-                  <select 
-                    value={moduleFilter}
-                    onChange={(e) => handleFilterChange('module', e.target.value)}
-                    className="appearance-none bg-black border border-white/10 text-slate-300 text-sm font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors"
+
+              {/* Phân trang nằm bên phải */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded-xl p-1 shrink-0">
+                  <button 
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                   >
-                    <option value="all">Tất cả Module</option>
-                    <option value="radar">Radar</option>
-                    <option value="environment">Môi trường</option>
-                    <option value="safety">An toàn (Lửa/Khí)</option>
-                    <option value="security">An ninh (Cửa/PIR)</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  
+                  <span className="text-[11px] font-bold font-mono px-2 text-slate-400">
+                    <strong className="text-blue-400">{page + 1}</strong>/{totalPages}
+                  </span>
+
+                  <button 
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                    className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                {/* Đã xóa cụm nút chọn bộ lọc thời gian ở đây */}
-              </div>
+              )}
             </div>
 
+            {/* List danh sách Logs cuộn bên trong */}
             <div className="flex-1 overflow-y-auto pr-2 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
               {logs.length > 0 ? logs.map((log, idx) => {
                 const style = getLogStyle(log);
@@ -219,18 +193,17 @@ export default function Home() {
                   </div>
                 );
               }) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 py-12">
                   <ShieldCheck className="w-12 h-12 mb-3 opacity-20" />
                   <p>Không có dữ liệu nào khớp với bộ lọc.</p>
                 </div>
               )}
             </div>
-
-            {renderPagination()}
             
           </div>
         </div>
 
+        {/* === CỘT PHẢI: CAMERA STREAM & THỜI TIẾT === */}
         <div className="xl:col-span-1 flex flex-col gap-6 xl:h-[calc(100vh-10rem)]">
           <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl flex flex-col flex-1 min-h-[200px] relative overflow-hidden group">
             <img 
@@ -349,6 +322,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );

@@ -6,10 +6,13 @@ import Home from './pages/home/Home';
 import SmartHomeMap from './pages/map/SmartHomeMap';
 import SmartHomeMap3D from './pages/map/SmartHomeMap3D';
 
-// Import 3 trang mới
+// Import các trang quản lý chức năng
 import Devices from './pages/devices/Devices';
 import Notifications from './pages/notifications/Notifications';
 import Security from './pages/security/Security';
+
+// BỔ SUNG: Import trang Lịch sử trò chuyện trợ lý AI mới làm
+import AssistantHistory from './pages/assistant/AssistantHistory';
 
 // 1. Hàm kiểm tra xem đã có Token chưa (trong LocalStorage hoặc SessionStorage)
 const isAuthenticated = () => {
@@ -50,6 +53,9 @@ function App() {
           <Route path="/devices" element={<Devices />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/security" element={<Security />} />
+          
+          {/* BỔ SUNG: Route lịch sử trò chuyện của Trợ lý AI */}
+          <Route path="/assistant-history" element={<AssistantHistory />} />
           
           {/* CÁC TRANG BẢN ĐỒ */}
           <Route path="/map" element={<SmartHomeMap />} />

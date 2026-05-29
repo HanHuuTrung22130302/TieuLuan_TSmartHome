@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Flame, Wind, Activity, Radar, Volume2, Thermometer, 
-  Clock, MapPin, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Filter, CalendarDays, Bell
+  Clock, MapPin, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Filter, Bell
 } from 'lucide-react';
 import { getWarningList, getWarningStats } from '../../services/api/warning';
 import wsService from '../../services/api/wsService';
@@ -176,54 +176,6 @@ export default function Notifications() {
     }
   };
 
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-
-    let pages = [];
-    let startPage = Math.max(0, page - 2);
-    let endPage = Math.min(totalPages - 1, startPage + 4);
-
-    if (endPage - startPage < 4) {
-      startPage = Math.max(0, endPage - 4);
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(
-        <button
-          key={i}
-          onClick={() => setPage(i)}
-          className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold transition-colors ${
-            page === i 
-              ? 'bg-blue-600 text-white' 
-              : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
-          }`}
-        >
-          {i + 1}
-        </button>
-      );
-    }
-
-    return (
-      <div className="flex items-center justify-center gap-2 pt-4 shrink-0">
-        <button 
-          onClick={() => setPage(p => Math.max(0, p - 1))}
-          disabled={page === 0}
-          className="p-2 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        {pages}
-        <button 
-          onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-          disabled={page >= totalPages - 1}
-          className="p-2 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    );
-  };
-
   const getSeverityConfig = (status, type) => {
     if (status === 'Nguy hiểm') return { icon: Flame, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-l-rose-500 border-white/5' };
     if (status === 'Cảnh báo') return { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-l-amber-500 border-white/5' };
@@ -241,16 +193,10 @@ export default function Notifications() {
   const calendarDays = buildCalendar();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="h-screen bg-[#0a0a0a] text-white p-6 md:p-8 overflow-hidden flex flex-col font-sans">
       
-      <header className="mb-8">
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <Bell className="w-8 h-8 text-blue-500" /> Trung tâm Thông báo
-        </h2>
-        <p className="text-slate-500 mt-2">Theo dõi, lọc và phân tích lịch sử cảnh báo an ninh toàn hệ thống.</p>
-      </header>
-
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-10rem)]">
+      {/* Khung cấu trúc h-[calc(100vh-4rem)] khít gọn màn hình */}
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         
         {/* ================= CỘT TRÁI: THỐNG KÊ & BỘ LỌC (SIDEBAR) ================= */}
         <div className="w-full lg:w-80 flex flex-col gap-6 shrink-0 overflow-y-auto pb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -369,15 +315,47 @@ export default function Notifications() {
         </div>
 
         {/* ================= CỘT PHẢI: KHU VỰC HIỂN THỊ DANH SÁCH ================= */}
-        <div className="flex-1 flex flex-col bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
+        <div className="flex-1 flex flex-col bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl overflow-hidden relative min-h-0">
           
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+          {/* HEADER CỦA BẢNG: ĐƯA PHÂN TRANG VÀ TIÊU ĐỀ FLAT VÀO ĐÂY */}
+          <div className="flex items-center justify-between p-6 pb-4 shrink-0 border-b border-white/5 bg-black/10">
+            <h3 className="text-lg font-bold tracking-tight text-slate-300 flex items-center gap-2">
+              <Bell className="w-5 h-5 text-blue-500" /> Danh sách Cảnh báo
+            </h3>
+
+            {/* THANH PHÂN TRANG ĐƯỢC CHUYỂN LÊN GÓC TRÊN AN TOÀN TRÁNH BỊ Ô CHAT ĐÈ */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded-xl p-1 shrink-0">
+                <button 
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                
+                <span className="text-[11px] font-bold font-mono px-2 text-slate-400">
+                  <strong className="text-blue-400">{page + 1}</strong>/{totalPages}
+                </span>
+
+                <button 
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Danh sách log chạy cuộn mượt trải dài hoàn toàn xuống đáy card */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 pb-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
             {logs.length > 0 ? (
               logs.map((n) => {
                 const config = getSeverityConfig(n.status, n.type);
                 const Icon = config.icon;
 
-                // Thẻ thông báo được làm phẳng (flat), nhấn nhá bằng thanh màu ở cạnh trái
                 return (
                   <div key={n.id} className={`flex items-center gap-4 py-4 px-5 rounded-2xl bg-white/[0.02] border-l-4 border-y border-r transition-colors hover:bg-white/[0.04] ${config.border}`}>
                     <div className={`p-3 rounded-xl shrink-0 ${config.bg}`}>
@@ -415,7 +393,7 @@ export default function Notifications() {
                 );
               })
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500">
+              <div className="h-full flex flex-col items-center justify-center text-slate-500 py-12">
                 <ShieldCheck className="w-16 h-16 mb-4 opacity-20" />
                 <h4 className="text-xl font-bold text-white mb-2">Không có thông báo</h4>
                 <p className="text-sm text-center max-w-sm">Hệ thống đang hoạt động ổn định. Không có dữ liệu nào khớp với bộ lọc hiện tại.</p>
@@ -423,9 +401,6 @@ export default function Notifications() {
             )}
           </div>
           
-          <div className="p-4 border-t border-white/5 bg-black/20">
-            {renderPagination()}
-          </div>
         </div>
 
       </div>

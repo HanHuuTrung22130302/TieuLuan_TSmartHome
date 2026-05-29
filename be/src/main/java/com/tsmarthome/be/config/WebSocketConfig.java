@@ -13,9 +13,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // React.js (cổng 5173) sẽ kết nối vào endpoint này
+//        registry.addEndpoint("/ws-smarthome")
+//                .setAllowedOrigins("http://localhost:5173")
+//                .withSockJS(); // Hỗ trợ fallback nếu browser không có WebSocket thuần
         registry.addEndpoint("/ws-smarthome")
-                .setAllowedOrigins("http://localhost:5173")
-                .withSockJS(); // Hỗ trợ fallback nếu browser không có WebSocket thuần
+                .setAllowedOriginPatterns("*")
+                .withSockJS();
     }
 
     @Override

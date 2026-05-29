@@ -26,64 +26,106 @@ public class GeminiService {
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public String askGemini(String userMessage) {
-        try {
-            String systemPrompt = """
+        int maxRetries = 3;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                String systemPrompt = """
                     Bạn là trợ lý AI cho hệ thống nhà thông minh TSmartHome.
                     Hãy trả lời ngắn gọn, dễ hiểu bằng tiếng Việt.
                     Nếu người dùng hỏi về thiết bị trong nhà, hãy giải thích theo ngữ cảnh nhà thông minh.
                     Nếu không chắc dữ liệu thực tế, hãy nói rằng cần kiểm tra hệ thống.
                     """;
 
-            String prompt = systemPrompt + "\n\nNgười dùng hỏi: " + userMessage;
+                String prompt = systemPrompt + "\n\nNgười dùng hỏi: " + userMessage;
 
-            String requestBody = objectMapper.writeValueAsString(
-                    objectMapper.createObjectNode()
-                            .set("contents", objectMapper.createArrayNode()
-                                    .add(objectMapper.createObjectNode()
-                                            .set("parts", objectMapper.createArrayNode()
-                                                    .add(objectMapper.createObjectNode()
-                                                            .put("text", prompt)
-                                                    )
-                                            )
-                                    )
-                            )
-            );
+                String requestBody = objectMapper.writeValueAsString(
+                        objectMapper.createObjectNode()
+                                .set("contents", objectMapper.createArrayNode()
+                                        .add(objectMapper.createObjectNode()
+                                                .set("parts", objectMapper.createArrayNode()
+                                                        .add(objectMapper.createObjectNode()
+                                                                .put("text", prompt)
+                                                        )
+                                                )
+                                        )
+                                )
+                );
 
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                    + model
-                    + ":generateContent";
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                        + model
+                        + ":generateContent";
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("x-goog-api-key", apiKey)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
-                    .build();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("x-goog-api-key", apiKey)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                        .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return "Gemini đang phản hồi lỗi: HTTP " + response.statusCode();
+                int statusCode = response.statusCode();
+
+                if (statusCode >= 200 && statusCode < 300) {
+                    JsonNode root = objectMapper.readTree(response.body());
+
+                    JsonNode textNode = root
+                            .path("candidates")
+                            .path(0)
+                            .path("content")
+                            .path("parts")
+                            .path(0)
+                            .path("text");
+
+                    if (textNode.isMissingNode() || textNode.asText().isBlank()) {
+                        return "Tôi chưa nhận được câu trả lời phù hợp từ Gemini.";
+                    }
+
+                    return textNode.asText();
+                }
+
+                // Các lỗi tạm thời: retry
+                if (statusCode == 429 || statusCode == 500 || statusCode == 503 || statusCode == 504) {
+                    if (attempt < maxRetries) {
+                        long delayMs = calculateRetryDelayMs(attempt);
+                        System.out.println("Gemini tạm lỗi HTTP " + statusCode
+                                + ", thử lại lần " + attempt + "/" + maxRetries
+                                + " sau " + delayMs + "ms");
+
+                        Thread.sleep(delayMs);
+                        continue;
+                    }
+
+                    return "Gemini đang tạm thời quá tải hoặc chưa sẵn sàng. Bạn thử lại sau vài giây nhé.";
+                }
+
+                // Các lỗi không nên retry: 400, 401, 403...
+                return "Gemini phản hồi lỗi HTTP " + statusCode + ": " + response.body();
+
+            } catch (Exception e) {
+                if (attempt < maxRetries) {
+                    try {
+                        long delayMs = calculateRetryDelayMs(attempt);
+                        System.out.println("Lỗi gọi Gemini, thử lại sau " + delayMs + "ms: " + e.getMessage());
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException interruptedException) {
+                        Thread.currentThread().interrupt();
+                        return "Yêu cầu Gemini bị gián đoạn.";
+                    }
+                } else {
+                    return "Lỗi khi gọi Gemini API: " + e.getMessage();
+                }
             }
-
-            JsonNode root = objectMapper.readTree(response.body());
-
-            JsonNode textNode = root
-                    .path("candidates")
-                    .path(0)
-                    .path("content")
-                    .path("parts")
-                    .path(0)
-                    .path("text");
-
-            if (textNode.isMissingNode() || textNode.asText().isBlank()) {
-                return "Tôi chưa nhận được câu trả lời phù hợp từ Gemini.";
-            }
-
-            return textNode.asText();
-
-        } catch (Exception e) {
-            return "Lỗi khi gọi Gemini API: " + e.getMessage();
         }
+
+        return "Gemini hiện chưa phản hồi được. Bạn thử lại sau nhé.";
+    }
+
+    private long calculateRetryDelayMs(int attempt) {
+        // exponential backoff: 1s, 2s, 4s + jitter nhỏ
+        long baseDelay = (long) Math.pow(2, attempt - 1) * 1000L;
+        long jitter = (long) (Math.random() * 500L);
+        return baseDelay + jitter;
     }
 }

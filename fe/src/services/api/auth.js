@@ -6,8 +6,28 @@ const authService = {
     return response.data;
   },
 
-  login: async (credentials) => {
+  login: async (credentials, rememberMe = true) => {
     const response = await axiosClient.post('/auth/login', credentials);
+    
+    // Nếu đăng nhập thành công từ Backend
+    if (response.data && response.data.code === 1000) {
+      const { token, refreshToken, email, userId, fullName } = response.data.data;
+      
+      // Lựa chọn Storage dựa trên tính năng "Ghi nhớ đăng nhập"
+      const storage = rememberMe ? localStorage : sessionStorage;
+
+      // Lưu lẻ các trường để các service khác (như assistant.js) lấy trực tiếp bằng getItem
+      storage.setItem('token', token);
+      storage.setItem('email', email);
+      storage.setItem('userId', userId);
+      storage.setItem('fullName', fullName);
+
+      // Riêng refreshToken luôn lưu ở localStorage để hỗ trợ giữ phiên lâu dài
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
+    }
+    
     return response.data;
   },
 
