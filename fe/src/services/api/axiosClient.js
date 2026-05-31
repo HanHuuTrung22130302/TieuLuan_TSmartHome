@@ -7,7 +7,8 @@ import axios from 'axios';
 //   },
 // });
 const axiosClient = axios.create({
-  baseURL: 'http://171.227.82.185:8080/api',
+  // baseURL: 'http://171.227.82.185:8080/api',
+  baseURL: '/api', // Sử dụng proxy để tránh hardcode URL backend
   headers: {
     'Content-Type': 'application/json',
   },
@@ -22,10 +23,7 @@ const clearAuthAndRedirect = () => {
     sessionStorage.removeItem(key);
   });
 
-  // Kiểm tra nếu chưa ở trang login thì mới đá về tránh lặp vô hạn
-  if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
-    window.location.href = '/login'; 
-  }
+  window.location.href = '/login'; 
 };
 
 // 1. Gắn Token vào mọi Request gửi đi
@@ -40,15 +38,13 @@ axiosClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 2. Bắt lỗi trả về - Hỗ trợ đá về Login tự động khi BE restart (401/403)
+// 2. Bắt lỗi trả về và tự động Refresh Token nếu gặp 401
 axiosClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    const status = error.response ? error.response.status : null;
 
-    // Bắt cả 401 (Hết hạn) và 403 (Token lỗi do BE bị reset đổi Secret Key ngầm)
-    if ((status === 401 || status === 403) && !originalRequest._retry) {
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem('refreshToken');
 
@@ -61,7 +57,10 @@ axiosClient.interceptors.response.use(
         // const res = await axios.post('http://localhost:8080/api/auth/refresh', {
         //   refreshToken: refreshToken
         // });
-        const res = await axios.post('http://171.227.82.185:8080/api/auth/refresh', {
+        // const res = await axios.post('http://171.227.82.185:8080/api/auth/refresh', {
+        //   refreshToken: refreshToken
+        // });
+        const res = await axios.post('/api/auth/refresh', {
           refreshToken: refreshToken
         });
 
@@ -82,13 +81,8 @@ axiosClient.interceptors.response.use(
 
           originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
           return axiosClient(originalRequest);
-        } else {
-          // Trường hợp API trả về lỗi code khác 1000 (Ví dụ: Refresh Token hết hạn trong DB)
-          clearAuthAndRedirect();
-          return Promise.reject(error);
         }
       } catch (refreshError) {
-        // Refresh thất bại (Backend sập dữ liệu cũ / reset hoàn toàn session)
         clearAuthAndRedirect();
         return Promise.reject(refreshError);
       }

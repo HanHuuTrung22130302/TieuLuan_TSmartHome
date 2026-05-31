@@ -8,7 +8,8 @@ class WsService {
       webSocketFactory: () => {
         const token = localStorage.getItem('token') || sessionStorage.getItem('token');
         // return new SockJS(`http://localhost:8080/ws-smarthome?token=${token}`);
-        return new SockJS(`http://171.227.82.185:8080/ws-smarthome?token=${token}`);
+        // return new SockJS(`http://171.227.82.185:8080/ws-smarthome?token=${token}`);
+        return new SockJS(`/ws-smarthome?token=${token}`);
       },
       beforeConnect: () => {
         const token = localStorage.getItem('token') || sessionStorage.getItem('token');

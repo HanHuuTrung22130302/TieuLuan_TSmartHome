@@ -20,6 +20,7 @@ export default function Home() {
   const [logs, setLogs] = useState([]);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const cameraUrl = "/camera-s3/stream";
 
   useEffect(() => {
     const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -207,8 +208,8 @@ export default function Home() {
         <div className="xl:col-span-1 flex flex-col gap-6 xl:h-[calc(100vh-10rem)]">
           <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl flex flex-col flex-1 min-h-[200px] relative overflow-hidden group">
             <img 
-              src="http://171.227.82.185:81/stream" 
-              alt="Live Stream" 
+              src={cameraUrl}
+              
               className="absolute inset-0 w-full h-full object-cover bg-black"
               onError={(e) => {
                 e.target.style.display = 'none';
