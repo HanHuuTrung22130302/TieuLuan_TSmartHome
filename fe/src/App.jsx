@@ -13,6 +13,7 @@ import Security from './pages/security/Security';
 
 // BỔ SUNG: Import trang Lịch sử trò chuyện trợ lý AI mới làm
 import AssistantHistory from './pages/assistant/AssistantHistory';
+import Schedules from './pages/schedules/Schedules';
 
 // 1. Hàm kiểm tra xem đã có Token chưa (trong LocalStorage hoặc SessionStorage)
 const isAuthenticated = () => {
@@ -53,6 +54,7 @@ function App() {
           <Route path="/devices" element={<Devices />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/security" element={<Security />} />
+          <Route path="/schedules" element={<Schedules />} />
           
           {/* BỔ SUNG: Route lịch sử trò chuyện của Trợ lý AI */}
           <Route path="/assistant-history" element={<AssistantHistory />} />

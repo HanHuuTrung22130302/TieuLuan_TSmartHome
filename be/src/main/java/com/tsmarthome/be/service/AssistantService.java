@@ -29,6 +29,9 @@ public class AssistantService {
     private final HomeSummaryService homeSummaryService;
     private final AssistantChatRepository assistantChatRepository;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
 
     private boolean isHomeSummaryCommand(String msg) {
         return containsAny(msg,
@@ -65,6 +68,10 @@ public class AssistantService {
 
         if (isDeviceStateQuery(normalized)) {
             return summarizeDeviceStatesWithGemini(message);
+        }
+
+        if (isDeviceActivityCheckQuery(normalized)) {
+            return checkDeviceActivity(normalized);
         }
 
         log.info("ASSISTANT NORMALIZED MESSAGE: {}", normalized);
@@ -877,6 +884,132 @@ public class AssistantService {
                 .actionExecuted(false)
                 .actionType("DEVICE_STATE_SUMMARY")
                 .build();
+    }
+
+    private boolean isDeviceActivityCheckQuery(String msg) {
+        return containsAny(msg,
+                "hoat dong khong",
+                "hoat dong duoc khong",
+                "con hoat dong",
+                "con chay khong",
+                "kiem tra hoat dong",
+                "con chay duoc",
+                "co hong khong",
+                "co hu khong",
+                "bi hong khong",
+                "bi hu khong",
+                "check hoat dong",
+                "kiem tra ket noi"
+        );
+    }
+
+    private AssistantChatResponse checkDeviceActivity(String normalized) {
+        MatchResult matchResult = findTargetDevice(normalized);
+
+        if (matchResult.status == MatchStatus.NOT_FOUND) {
+            return AssistantChatResponse.builder()
+                    .reply("Tôi không tìm thấy thiết bị bạn muốn kiểm tra. Vui lòng nói rõ hơn, ví dụ: 'đèn phòng khách còn hoạt động không?'")
+                    .actionExecuted(false)
+                    .actionType("CHECK_DEVICE_NOT_FOUND")
+                    .build();
+        }
+
+        if (matchResult.status == MatchStatus.AMBIGUOUS) {
+            return AssistantChatResponse.builder()
+                    .reply("Tôi thấy có nhiều thiết bị phù hợp. Bạn muốn kiểm tra thiết bị nào: " + String.join(", ", matchResult.suggestions) + "?")
+                    .actionExecuted(false)
+                    .actionType("CHECK_DEVICE_AMBIGUOUS")
+                    .build();
+        }
+
+        Device device = matchResult.device;
+        String displayName = getDisplayName(device);
+
+        if (Boolean.TRUE.equals(device.getIsFake())) {
+            return AssistantChatResponse.builder()
+                    .reply("Thiết bị " + displayName + " là thiết bị ảo (isFake = true), không thể kiểm tra kết nối phần cứng thực tế.")
+                    .actionExecuted(false)
+                    .actionType("CHECK_DEVICE_FAKE")
+                    .build();
+        }
+
+        Boolean originalState = device.getState();
+        if (originalState == null) {
+            return AssistantChatResponse.builder()
+                    .reply("Thiết bị " + displayName + " không hỗ trợ lưu trạng thái Bật/Tắt (state = null) nên không thể kiểm tra hoạt động.")
+                    .actionExecuted(false)
+                    .actionType("CHECK_DEVICE_NO_STATE")
+                    .build();
+        }
+
+        try {
+            boolean firstCommand = !originalState;
+            log.info("[Assistant] Đang kiểm tra hoạt động của {}. State hiện tại: {}, Gửi lệnh 1: {}", 
+                    device.getName(), originalState, firstCommand);
+
+            // Gửi lệnh đổi trạng thái
+            deviceManagementService.controlDevice(device.getId(), firstCommand);
+
+            boolean responded = false;
+            // Chờ phản hồi trong tối đa 1.5 giây
+            for (int i = 0; i < 15; i++) {
+                Thread.sleep(100);
+                entityManager.clear(); // Clear L1 cache to reload from DB
+                Device updated = deviceRepository.findById(device.getId()).orElse(null);
+                if (updated != null && updated.getState() == firstCommand) {
+                    responded = true;
+                    break;
+                }
+            }
+
+            if (responded) {
+                log.info("[Assistant] {} đã phản hồi! Đang khôi phục lại trạng thái ban đầu: {}", 
+                        device.getName(), originalState);
+                
+                // Khôi phục lại trạng thái ban đầu
+                deviceManagementService.controlDevice(device.getId(), originalState);
+
+                // Chờ khôi phục
+                for (int i = 0; i < 10; i++) {
+                    Thread.sleep(100);
+                    entityManager.clear();
+                    Device updated = deviceRepository.findById(device.getId()).orElse(null);
+                    if (updated != null && updated.getState() == originalState) {
+                        break;
+                    }
+                }
+
+                return AssistantChatResponse.builder()
+                        .reply("Thiết bị " + displayName + " vẫn hoạt động tốt! Trạng thái của thiết bị đã tự động phản hồi và khôi phục về trạng thái " + (originalState ? "Bật" : "Tắt") + ".")
+                        .actionExecuted(true)
+                        .actionType("CHECK_DEVICE_ACTIVE")
+                        .build();
+            } else {
+                log.warn("[Assistant] {} không phản hồi trong 1.5 giây!", device.getName());
+                
+                // Khôi phục hiển thị trạng thái ban đầu trên DB
+                entityManager.clear();
+                Device updated = deviceRepository.findById(device.getId()).orElse(null);
+                if (updated != null && updated.getState() != originalState) {
+                    updated.setState(originalState);
+                    deviceRepository.save(updated);
+                }
+
+                return AssistantChatResponse.builder()
+                        .reply("Thiết bị " + displayName + " không phản hồi tín hiệu điều khiển. Có thể thiết bị đang mất kết nối hoặc bị hỏng.")
+                        .actionExecuted(false)
+                        .actionType("CHECK_DEVICE_INACTIVE")
+                        .build();
+            }
+
+        } catch (Exception e) {
+            log.error("[Assistant] Lỗi khi kiểm tra hoạt động thiết bị: {}", device.getName(), e);
+            return AssistantChatResponse.builder()
+                    .reply("Gặp lỗi khi kiểm tra thiết bị " + displayName + ": " + e.getMessage())
+                    .actionExecuted(false)
+                    .actionType("CHECK_DEVICE_ERROR")
+                    .build();
+        }
     }
 
 }

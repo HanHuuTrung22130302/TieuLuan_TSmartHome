@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Home, LayoutDashboard, Settings, LogOut, Map, Cpu, Bell, ShieldCheck,
-  Mic, MicOff, Send, RefreshCw, AlertTriangle, CheckCircle2, MessageSquare, Menu, X
+  Mic, MicOff, Send, RefreshCw, AlertTriangle, CheckCircle2, MessageSquare, Menu, X, Clock
 } from 'lucide-react';
 import { sendAssistantChat } from '../services/api/assistant';
 
@@ -17,6 +17,7 @@ export default function MainLayout() {
     { path: '/devices', icon: <Cpu className="w-5 h-5" />, label: 'Quản lý thiết bị' },
     { path: '/notifications', icon: <Bell className="w-5 h-5" />, label: 'Lịch sử hoạt động' },
     { path: '/security', icon: <ShieldCheck className="w-5 h-5" />, label: 'Camera & An ninh' },
+    { path: '/schedules', icon: <Clock className="w-5 h-5" />, label: 'Hẹn giờ thiết bị' },
     { path: '/assistant-history', icon: <MessageSquare className="w-5 h-5" />, label: 'Lịch sử trò chuyện' },
   ];
 
