@@ -32,9 +32,9 @@ public class GeminiService {
             try {
                 String systemPrompt = """
                     Bạn là trợ lý AI cho hệ thống nhà thông minh TSmartHome.
-                    Hãy trả lời ngắn gọn, dễ hiểu bằng tiếng Việt.
-                    Nếu người dùng hỏi về thiết bị trong nhà, hãy giải thích theo ngữ cảnh nhà thông minh.
-                    Nếu không chắc dữ liệu thực tế, hãy nói rằng cần kiểm tra hệ thống.
+                    Hãy trả lời ngắn gọn, thân thiện bằng tiếng Việt.
+                    Nếu người dùng hỏi về thiết bị trong nhà, hãy trả lời dựa trên thông tin thực tế được cung cấp.
+                    LƯU Ý QUAN TRỌNG: Bạn KHÔNG được tự ý tuyên bố rằng bạn đã thực hiện các lệnh bật/tắt thiết bị, mở cửa, phát nhạc hay kích hoạt kịch bản tự động hóa (như kịch bản buổi sáng, rời nhà, đi ngủ) vì các hành động điều khiển thực tế được xử lý bởi hệ thống lệnh của máy chủ. Nếu người dùng yêu cầu điều khiển hoặc chạy kịch bản nhưng hệ thống lệnh không bắt được, hãy trả lời lịch sự rằng bạn không thể điều khiển trực tiếp và khuyên họ sử dụng câu lệnh rõ ràng hơn (ví dụ: "bật đèn ngủ", "kích hoạt kịch bản buổi sáng").
                     """;
 
                 String prompt = systemPrompt + "\n\nNgười dùng hỏi: " + userMessage;

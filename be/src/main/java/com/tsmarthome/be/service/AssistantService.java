@@ -401,11 +401,15 @@ public class AssistantService {
         msg = removeWakeWord(msg);
 
         if (isHomeArrivalScene(msg) || isDarkScene(msg)) {
-            return controlAllLights(true, "Đã bật toàn bộ đèn trong nhà. Chào mừng bạn về nhà.");
+            return executeHomeArrivalScene();
         }
 
-        if (isLeavingScene(msg) || isMorningScene(msg)) {
-            return controlAllLights(false, "Đã tắt toàn bộ đèn trong nhà. Chúc bạn một ngày tốt lành.");
+        if (isLeavingScene(msg)) {
+            return executeLeavingScene();
+        }
+
+        if (isMorningScene(msg)) {
+            return executeMorningScene();
         }
 
         return null;
@@ -427,7 +431,10 @@ public class AssistantService {
                 "minh ve nha roi",
                 "ve nha roi",
                 "toi ve roi",
-                "da ve nha"
+                "da ve nha",
+                "kich ban ve nha",
+                "kich ban chao mung",
+                "chao mung ve nha"
         );
     }
 
@@ -450,7 +457,13 @@ public class AssistantService {
                 "toi ra khoi nha",
                 "di lam day",
                 "di day",
-                "vang nha"
+                "vang nha",
+                "kich ban di lam",
+                "kich ban ra ngoai",
+                "di ngu",
+                "kich ban di ngu",
+                "chuc ngu ngon",
+                "good night"
         );
     }
 
@@ -460,12 +473,140 @@ public class AssistantService {
                 "sang roi",
                 "troi da sang",
                 "den sang roi",
-                "tat den di"
+                "tat den di",
+                "buoi sang",
+                "kich ban buoi sang",
+                "chao buoi sang",
+                "morning"
         );
     }
 
-    private AssistantChatResponse controlAllLights(boolean action, String successReply) {
-        List<String> lightDeviceNames = List.of(
+    private AssistantChatResponse executeHomeArrivalScene() {
+        int success = 0;
+        int failed = 0;
+        List<String> lightDeviceNames = getLightDeviceNames();
+        for (String name : lightDeviceNames) {
+            Optional<Device> dOpt = deviceRepository.findByName(name);
+            if (dOpt.isPresent() && dOpt.get().getState() != null) {
+                try {
+                    deviceManagementService.controlDevice(dOpt.get().getId(), true);
+                    success++;
+                } catch (Exception e) {
+                    failed++;
+                }
+            }
+        }
+
+        boolean curtainSuccess = false;
+        Optional<Device> curtainOpt = deviceRepository.findByName("balcony1_curtain_main");
+        if (curtainOpt.isPresent() && curtainOpt.get().getState() != null) {
+            try {
+                deviceManagementService.controlDevice(curtainOpt.get().getId(), true);
+                curtainSuccess = true;
+            } catch (Exception e) {
+                log.warn("Lỗi mở rèm trong kịch bản: {}", e.getMessage());
+            }
+        }
+
+        String reply = "Dạ, TSmartHome đã kích hoạt kịch bản Về nhà: Đã bật " + success + " đèn" 
+                + (curtainSuccess ? " và mở rèm cửa ban công" : "") + " để chào đón bạn.";
+        if (failed > 0) {
+            reply += " (Có " + failed + " đèn không kết nối được).";
+        }
+
+        return AssistantChatResponse.builder()
+                .reply(reply)
+                .actionExecuted(success > 0 || curtainSuccess)
+                .actionType("SCENE_HOME_ARRIVAL")
+                .build();
+    }
+
+    private AssistantChatResponse executeLeavingScene() {
+        int success = 0;
+        int failed = 0;
+        List<String> lightDeviceNames = getLightDeviceNames();
+        for (String name : lightDeviceNames) {
+            Optional<Device> dOpt = deviceRepository.findByName(name);
+            if (dOpt.isPresent() && dOpt.get().getState() != null) {
+                try {
+                    deviceManagementService.controlDevice(dOpt.get().getId(), false);
+                    success++;
+                } catch (Exception e) {
+                    failed++;
+                }
+            }
+        }
+
+        boolean curtainSuccess = false;
+        Optional<Device> curtainOpt = deviceRepository.findByName("balcony1_curtain_main");
+        if (curtainOpt.isPresent() && curtainOpt.get().getState() != null) {
+            try {
+                deviceManagementService.controlDevice(curtainOpt.get().getId(), false);
+                curtainSuccess = true;
+            } catch (Exception e) {
+                log.warn("Lỗi đóng rèm trong kịch bản: {}", e.getMessage());
+            }
+        }
+
+        String reply = "Dạ, TSmartHome đã kích hoạt kịch bản Rời nhà / Đi ngủ: Đã tắt " + success + " đèn" 
+                + (curtainSuccess ? " và đóng rèm cửa ban công." : ".");
+        if (failed > 0) {
+            reply += " (Có " + failed + " đèn không phản hồi).";
+        }
+
+        return AssistantChatResponse.builder()
+                .reply(reply)
+                .actionExecuted(success > 0 || curtainSuccess)
+                .actionType("SCENE_LEAVING")
+                .build();
+    }
+
+    private AssistantChatResponse executeMorningScene() {
+        List<String> bedroomLights = List.of(
+                "bedroom1_light_main",
+                "bedroom2_light_main",
+                "bedroom3_light_main"
+        );
+        int success = 0;
+        int failed = 0;
+        for (String name : bedroomLights) {
+            Optional<Device> dOpt = deviceRepository.findByName(name);
+            if (dOpt.isPresent() && dOpt.get().getState() != null) {
+                try {
+                    deviceManagementService.controlDevice(dOpt.get().getId(), false);
+                    success++;
+                } catch (Exception e) {
+                    failed++;
+                }
+            }
+        }
+
+        boolean curtainSuccess = false;
+        Optional<Device> curtainOpt = deviceRepository.findByName("balcony1_curtain_main");
+        if (curtainOpt.isPresent() && curtainOpt.get().getState() != null) {
+            try {
+                deviceManagementService.controlDevice(curtainOpt.get().getId(), true);
+                curtainSuccess = true;
+            } catch (Exception e) {
+                log.warn("Lỗi mở rèm trong kịch bản buổi sáng: {}", e.getMessage());
+            }
+        }
+
+        String reply = "Dạ, TSmartHome đã kích hoạt kịch bản Buổi sáng: Đã mở rèm ban công" 
+                + (success > 0 ? " và tắt " + success + " đèn phòng ngủ." : ".");
+        if (failed > 0) {
+            reply += " (Có " + failed + " đèn ngủ chưa tắt được).";
+        }
+
+        return AssistantChatResponse.builder()
+                .reply(reply)
+                .actionExecuted(success > 0 || curtainSuccess)
+                .actionType("SCENE_MORNING")
+                .build();
+    }
+
+    private List<String> getLightDeviceNames() {
+        return List.of(
                 "livingroom_light_front",
                 "livingroom_light_back",
                 "livingroom_light_ceiling",
@@ -481,44 +622,6 @@ public class AssistantService {
                 "wc2_light_main",
                 "wc3_light_main"
         );
-
-        int success = 0;
-        int failed = 0;
-
-        for (String deviceName : lightDeviceNames) {
-            Optional<Device> optionalDevice = deviceRepository.findByName(deviceName);
-
-            if (optionalDevice.isEmpty()) {
-                failed++;
-                continue;
-            }
-
-            Device device = optionalDevice.get();
-
-            if (device.getState() == null) {
-                failed++;
-                continue;
-            }
-
-            try {
-                deviceManagementService.controlDevice(device.getId(), action);
-                success++;
-            } catch (Exception e) {
-                failed++;
-                log.warn("ASSISTANT SCENE CONTROL FAILED: device={}, error={}", deviceName, e.getMessage());
-            }
-        }
-
-        String reply = successReply + " Đã gửi lệnh cho " + success + " đèn.";
-        if (failed > 0) {
-            reply += " Có " + failed + " đèn chưa điều khiển được.";
-        }
-
-        return AssistantChatResponse.builder()
-                .reply(reply)
-                .actionExecuted(success > 0)
-                .actionType(action ? "SCENE_HOME_LIGHTS_ON" : "SCENE_LEAVE_LIGHTS_OFF")
-                .build();
     }
 
     private MatchResult findTargetDevice(String msg) {
