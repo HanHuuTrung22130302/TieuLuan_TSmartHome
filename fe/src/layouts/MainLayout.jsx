@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
+import {
   Home, LayoutDashboard, Settings, LogOut, Map, Cpu, Bell, ShieldCheck,
   Mic, MicOff, Send, RefreshCw, AlertTriangle, CheckCircle2, MessageSquare, Menu, X, Clock
 } from 'lucide-react';
@@ -17,7 +17,7 @@ export default function MainLayout() {
     { path: '/devices', icon: <Cpu className="w-5 h-5" />, label: 'Quản lý thiết bị' },
     { path: '/notifications', icon: <Bell className="w-5 h-5" />, label: 'Lịch sử hoạt động' },
     { path: '/security', icon: <ShieldCheck className="w-5 h-5" />, label: 'Camera & An ninh' },
-    { path: '/schedules', icon: <Clock className="w-5 h-5" />, label: 'Hẹn giờ thiết bị' },
+    { path: '/schedules', icon: <Clock className="w-5 h-5" />, label: 'Kịch bản tự động' },
     { path: '/assistant-history', icon: <MessageSquare className="w-5 h-5" />, label: 'Lịch sử trò chuyện' },
   ];
 
@@ -52,13 +52,13 @@ export default function MainLayout() {
     }
   }, []);
   const handleLogout = () => {
-  const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email'];
-  keysToRemove.forEach(key => {
-    localStorage.removeItem(key);
-    sessionStorage.removeItem(key);
-  });
-  navigate('/');
-};
+    const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email'];
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    navigate('/');
+  };
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
@@ -83,7 +83,7 @@ export default function MainLayout() {
 
         const newLogUser = { id: 'u-' + Date.now(), message: message, isAssistant: false, actionType: 'USER_REQUEST', createdAt: new Date().toISOString() };
         const newLogAI = { id: 'a-' + Date.now(), message: replyText, isAssistant: true, actionType: response.data.actionType || 'CONTROL_DEVICE', createdAt: new Date().toISOString() };
-        
+
         window.dispatchEvent(new CustomEvent('tsmarthome_new_chat', { detail: { user: newLogUser, ai: newLogAI } }));
         // --------------------------------------------------------------------------------
 
@@ -134,11 +134,10 @@ export default function MainLayout() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all font-bold text-xs uppercase tracking-wider ${
-                  isActive 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 border border-blue-500/30' 
+                className={`flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all font-bold text-xs uppercase tracking-wider ${isActive
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 border border-blue-500/30'
                     : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-                }`}
+                  }`}
               >
                 {item.icon}
                 <span>{item.label}</span>
@@ -150,16 +149,16 @@ export default function MainLayout() {
 
       {/* Vùng nút Đăng xuất dưới đáy cố định */}
       <div className="p-4 border-t border-white/5 space-y-1.5 shrink-0 bg-slate-950/40 sticky bottom-0">
-        <Link 
-          to="/settings" 
+        <Link
+          to="/settings"
           onClick={() => setIsMobileMenuOpen(false)}
           className="flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white font-bold text-xs uppercase tracking-wider transition-all"
         >
           <Settings className="w-5 h-5" />
           Cài đặt
         </Link>
-        
-        <button 
+
+        <button
           onClick={() => {
             setIsMobileMenuOpen(false);
             setShowLogoutModal(true);
@@ -175,7 +174,7 @@ export default function MainLayout() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-full bg-slate-950 text-white font-sans overflow-hidden">
-      
+
       {/* HEADER ĐIỆN THOẠI */}
       <header className="h-16 w-full bg-slate-900 border-b border-white/5 flex items-center justify-between px-4 shrink-0 md:hidden z-30">
         <div className="flex items-center gap-2.5">
@@ -184,7 +183,7 @@ export default function MainLayout() {
           </div>
           <span className="text-sm font-black tracking-widest text-white uppercase">TSmartHome</span>
         </div>
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(true)}
           className="p-2.5 bg-white/5 border border-white/10 rounded-xl hover:text-white active:scale-95 transition-all text-slate-300"
         >
@@ -222,7 +221,7 @@ export default function MainLayout() {
           )}
 
           <div className="w-full bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-[2rem] flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
-            <button 
+            <button
               onClick={toggleListening}
               className={`p-2.5 rounded-full transition-all shrink-0 border relative outline-none ${isListening ? 'bg-red-500 text-white border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5'}`}
             >
@@ -230,7 +229,7 @@ export default function MainLayout() {
               {isListening && <span className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-50"></span>}
             </button>
 
-            <input 
+            <input
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
@@ -239,7 +238,7 @@ export default function MainLayout() {
               className="flex-1 bg-transparent border-none text-white placeholder-slate-500 text-xs font-bold outline-none px-2"
             />
 
-            <button 
+            <button
               onClick={() => handleSendChat()}
               disabled={!chatInput.trim() || isAiLoading}
               className={`p-2.5 rounded-full transition-all shrink-0 outline-none ${chatInput.trim() && !isAiLoading ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-md' : 'bg-white/5 text-slate-600 cursor-not-allowed'}`}

@@ -246,8 +246,8 @@ export default function Schedules() {
       {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] border transition-all duration-300 animate-in slide-in-from-right-5 ${toast.type === 'success'
-            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-            : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+          : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
           }`}>
           {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
           <span className="text-xs font-bold uppercase tracking-wider">{toast.message}</span>
@@ -262,7 +262,7 @@ export default function Schedules() {
               <Clock className="w-8 h-8 text-blue-500 animate-pulse" /> Cài đặt tự động hóa thiết bị
             </h2>
             <p className="text-slate-500 mt-2">
-              Lập lịch bật tắt các module điện tự động. Tổng cộng có <strong className="text-white">{schedules.length}</strong> bộ hẹn giờ.
+              Lập lịch các module tự động. Tổng cộng có <strong className="text-white">{schedules.length}</strong> bộ hẹn giờ.
             </p>
           </div>
 
@@ -447,8 +447,8 @@ export default function Schedules() {
                     type="button"
                     onClick={() => setActionState(true)}
                     className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${actionState
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -459,8 +459,8 @@ export default function Schedules() {
                     type="button"
                     onClick={() => setActionState(false)}
                     className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${!actionState
-                        ? 'bg-rose-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      ? 'bg-rose-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -480,8 +480,8 @@ export default function Schedules() {
                     type="button"
                     onClick={() => handleTypeChange('DAILY')}
                     className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${scheduleType === 'DAILY'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -492,8 +492,8 @@ export default function Schedules() {
                     type="button"
                     onClick={() => handleTypeChange('ONCE')}
                     className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${scheduleType === 'ONCE'
-                        ? 'bg-violet-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      ? 'bg-violet-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center justify-center gap-2">
