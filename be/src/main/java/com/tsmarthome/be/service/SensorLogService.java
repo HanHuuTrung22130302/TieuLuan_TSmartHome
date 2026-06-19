@@ -2,26 +2,37 @@ package com.tsmarthome.be.service;
 
 import com.tsmarthome.be.dto.log.response.SensorLogResponse;
 import com.tsmarthome.be.entity.SensorData;
+import com.tsmarthome.be.entity.User;
 import com.tsmarthome.be.repository.SensorDataRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class SensorLogService {
 
     private final SensorDataRepository sensorDataRepository;
+    private final SecurityUtil securityUtil;
+    private final UserHomeRepository userHomeRepository;
 
     public Page<SensorLogResponse> getFilteredLogs(String timeFilter, String deviceType, int page, int size) {
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return Page.empty();
+
         LocalDateTime startTime = calculateStartTime(timeFilter);
         Pageable pageable = PageRequest.of(page, size);
 
-        Page<SensorData> sensorDataPage = sensorDataRepository.findLatestLogsFiltered(startTime, deviceType, pageable);
+        Page<SensorData> sensorDataPage = sensorDataRepository.findLatestLogsFiltered(homeIds, startTime, deviceType, pageable);
 
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -41,7 +52,7 @@ public class SensorLogService {
                     .deviceId(deviceName)
                     .deviceName(data.getDevice().getLabel())
                     .value(displayValue)
-                    .status(data.getDevice().getStatus())
+                    .status(data.getDevice().getStatus() != null ? data.getDevice().getStatus() : "Không xác định")
                     .time(data.getCreatedAt().format(timeFormatter))
                     .date(data.getCreatedAt().format(dateFormatter))
                     .type(type)

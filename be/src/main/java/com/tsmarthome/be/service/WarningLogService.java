@@ -3,8 +3,13 @@ package com.tsmarthome.be.service;
 import com.tsmarthome.be.dto.log.response.WarningCountResponse;
 import com.tsmarthome.be.dto.log.response.WarningLogResponse;
 import com.tsmarthome.be.entity.SensorData;
+import com.tsmarthome.be.entity.User;
 import com.tsmarthome.be.repository.SensorDataRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,12 +27,18 @@ import java.time.temporal.ChronoUnit;
 public class WarningLogService {
 
     private final SensorDataRepository sensorDataRepository;
+    private final SecurityUtil securityUtil;
+    private final UserHomeRepository userHomeRepository;
 
     public Page<WarningLogResponse> getWarningLogs(String filterType, String startDate, String endDate, String deviceType, int page) {
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return Page.empty();
+
         LocalDateTime[] timeRange = calculateTimeRange(filterType, startDate, endDate);
         Pageable pageable = PageRequest.of(page, 20);
 
-        Page<SensorData> sensorDataPage = sensorDataRepository.findWarningLogs(timeRange[0], timeRange[1], deviceType, pageable);
+        Page<SensorData> sensorDataPage = sensorDataRepository.findWarningLogs(homeIds, timeRange[0], timeRange[1], deviceType, pageable);
 
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -47,7 +58,7 @@ public class WarningLogService {
                     .deviceId(deviceName)
                     .deviceName(data.getDevice().getLabel())
                     .value(displayValue)
-                    .status(data.getDevice().getStatus())
+                    .status(data.getDevice().getStatus() != null ? data.getDevice().getStatus() : "Không xác định")
                     .time(data.getCreatedAt().format(timeFormatter))
                     .date(data.getCreatedAt().format(dateFormatter))
                     .type(type)
@@ -57,10 +68,14 @@ public class WarningLogService {
     }
 
     public WarningCountResponse getWarningCounts(String filterType, String startDate, String endDate, String deviceType) {
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return new WarningCountResponse(0, 0);
+
         LocalDateTime[] timeRange = calculateTimeRange(filterType, startDate, endDate);
 
-        long warningCount = sensorDataRepository.countByStatus(timeRange[0], timeRange[1], deviceType, "Cảnh báo");
-        long dangerCount = sensorDataRepository.countByStatus(timeRange[0], timeRange[1], deviceType, "Nguy hiểm");
+        long warningCount = sensorDataRepository.countByStatus(homeIds, timeRange[0], timeRange[1], deviceType, "Cảnh báo");
+        long dangerCount = sensorDataRepository.countByStatus(homeIds, timeRange[0], timeRange[1], deviceType, "Nguy hiểm");
 
         return new WarningCountResponse(warningCount, dangerCount);
     }

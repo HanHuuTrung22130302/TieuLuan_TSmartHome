@@ -76,7 +76,7 @@ void processRadars() {
         doc["zone"] = "Hàng 2";
         doc["value"] = "Phát hiện ở Hàng 2";
         doc["status"] = "Cảnh báo";
-        publishJson("home/tsmarthome/livingroom/radar/livingroom_sensor_radar2/data", doc);
+        publishJson((String(TOPIC_PREFIX) + "livingroom/radar/livingroom_sensor_radar2/data").c_str(), doc);
       }
     }
 
@@ -95,7 +95,7 @@ void processRadars() {
         doc["zone"] = "Hàng 3";
         doc["value"] = "Phát hiện ở Hàng 3";
         doc["status"] = "Cảnh báo";
-        publishJson("home/tsmarthome/livingroom/radar/livingroom_sensor_radar3/data", doc);
+        publishJson((String(TOPIC_PREFIX) + "livingroom/radar/livingroom_sensor_radar3/data").c_str(), doc);
       }
     }
   }
@@ -182,6 +182,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 // ================= TIỆN ÍCH =================
 void publishJson(const char* topic, JsonDocument& doc) {
   doc["timestamp"] = time(nullptr);
+  doc["homeId"] = "11111111-1111-1111-1111-111111111111";
   char buffer[512]; serializeJson(doc, buffer);
   mqttClient.publish(topic, buffer);
   Serial.println("================================================");

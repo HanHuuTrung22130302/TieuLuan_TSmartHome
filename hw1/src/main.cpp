@@ -126,7 +126,7 @@ void processDualRadar() {
       if (distHL > 0.1 && distHL < 8.4) {
         String blockName = (distHL > 5.0) ? "Block 1" : "Block 2";
         JsonDocument doc; doc["deviceId"] = "hallway_sensor_radar"; doc["distance"] = round(distHL * 10) / 10.0; doc["zone"] = blockName; doc["value"] = "Có vật thể tại " + blockName; doc["status"] = "Cảnh báo";
-        publishJson("home/tsmarthome/hallway/radar/hallway_sensor_radar/data", doc);
+        publishJson((String(TOPIC_PREFIX) + "hallway/radar/hallway_sensor_radar/data").c_str(), doc);
       }
     }
 
@@ -138,7 +138,7 @@ void processDualRadar() {
       if (distPK > 0.1 && distPK <= 15.5) {
         String roomName = (distPK > 10.0) ? "Phòng Khách (Block 1)" : "Bếp (Block 2)";
         JsonDocument doc; doc["deviceId"] = "livingroom_sensor_radar"; doc["distance"] = round(distPK * 10) / 10.0; doc["zone"] = roomName; doc["value"] = "Phát hiện ở " + roomName; doc["status"] = "Cảnh báo";
-        publishJson("home/tsmarthome/livingroom/radar/livingroom_sensor_radar/data", doc);
+        publishJson((String(TOPIC_PREFIX) + "livingroom/radar/livingroom_sensor_radar/data").c_str(), doc);
       }
     }
   }
@@ -159,14 +159,14 @@ void processRealSensors() {
   // 1. NGẮT ÂM THANH SỐ
   if (suddenNoise) {
     JsonDocument doc; doc["deviceId"] = "livingroom_sensor_audio"; doc["value"] = "ỒN ÀO đột ngột!"; doc["status"] = "Cảnh báo";
-    publishJson("home/tsmarthome/livingroom/sound/livingroom_sensor_audio/data", doc);
+    publishJson((String(TOPIC_PREFIX) + "livingroom/sound/livingroom_sensor_audio/data").c_str(), doc);
     audioCheckInterval = 60000; suddenNoise = false;
   }
 
   // 2. NGẮT PIR 
   if (motionDoor || motionLiving) {
     String triggerId = motionDoor ? "entrance_sensor_pir" : "livingroom_sensor_pir";
-    String topic = motionDoor ? "home/tsmarthome/entrance/motion/entrance_sensor_pir/data" : "home/tsmarthome/livingroom/motion/livingroom_sensor_pir/data";
+    String topic = motionDoor ? (String(TOPIC_PREFIX) + "entrance/motion/entrance_sensor_pir/data") : (String(TOPIC_PREFIX) + "livingroom/motion/livingroom_sensor_pir/data");
     JsonDocument doc; doc["deviceId"] = triggerId; doc["motion"] = true; doc["value"] = "Có người"; doc["status"] = "Cảnh báo";
     publishJson(topic.c_str(), doc);
     motionDoor = false; motionLiving = false;
@@ -183,7 +183,7 @@ void processRealSensors() {
       int amplitude = maxAmp - minAmp; int dbValue = constrain(map(amplitude, 0, 4000, 30, 100), 30, 100);
       audioCheckInterval = (dbValue > 70) ? 60000 : 300000;  
       JsonDocument micDoc; micDoc["deviceId"] = "livingroom_sensor_audio"; micDoc["value"] = String(dbValue) + " dB"; micDoc["status"] = dbValue > 70 ? "Hơi ồn" : "Yên tĩnh";
-      publishJson("home/tsmarthome/livingroom/sound/livingroom_sensor_audio/data", micDoc);
+      publishJson((String(TOPIC_PREFIX) + "livingroom/sound/livingroom_sensor_audio/data").c_str(), micDoc);
     }
   }
 
@@ -193,12 +193,12 @@ void processRealSensors() {
     float t = dht.readTemperature(); float h = dht.readHumidity();
     if (!isnan(t)) {
       JsonDocument doc; doc["deviceId"] = "livingroom_sensor_dht22"; doc["value"] = String(t, 1) + "°C / " + String(h, 1) + "%"; doc["status"] = "Bình thường";
-      publishJson("home/tsmarthome/livingroom/temperature/livingroom_sensor_dht22/data", doc);
+      publishJson((String(TOPIC_PREFIX) + "livingroom/temperature/livingroom_sensor_dht22/data").c_str(), doc);
     }
     int gasLevel = analogRead(PIN_MQ135);
     airCheckInterval = (gasLevel > 2000) ? 60000 : 300000;  
     JsonDocument gasDoc; gasDoc["deviceId"] = "kitchen_sensor_mq135"; gasDoc["value"] = gasLevel > 2000 ? "Khí độc" : "Sạch"; gasDoc["status"] = gasLevel > 2000 ? "Nguy hiểm" : "An toàn";
-    publishJson("home/tsmarthome/kitchen/air_quality/kitchen_sensor_mq135/data", gasDoc);
+    publishJson((String(TOPIC_PREFIX) + "kitchen/air_quality/kitchen_sensor_mq135/data").c_str(), gasDoc);
   }
 
   // 5. FLAME SENSOR 
@@ -207,7 +207,7 @@ void processRealSensors() {
   if (currentFlame != lastFlameState) {
     bool isFire = (currentFlame == LOW);
     JsonDocument doc; doc["deviceId"] = "kitchen_sensor_flame"; doc["detected"] = isFire; doc["value"] = isFire ? "CÓ LỬA" : "Không có lửa"; doc["status"] = isFire ? "Nguy hiểm" : "An toàn";
-    publishJson("home/tsmarthome/kitchen/flame/kitchen_sensor_flame/data", doc);
+    publishJson((String(TOPIC_PREFIX) + "kitchen/flame/kitchen_sensor_flame/data").c_str(), doc);
     lastFlameState = currentFlame;
   }
 }
@@ -263,6 +263,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 // ================= TIỆN ÍCH =================
 void publishJson(const char* topic, JsonDocument& doc) {
   doc["timestamp"] = time(nullptr);
+  doc["homeId"] = "11111111-1111-1111-1111-111111111111";
   char buffer[512]; serializeJson(doc, buffer);
   mqttClient.publish(topic, buffer);
   Serial.println("================================================");
@@ -277,7 +278,7 @@ void reconnectMQTT() {
     Serial.print("Đang kết nối MQTT Broker... ");
     if (mqttClient.connect(MQTT_CLIENT_ID)) {
       Serial.println("THÀNH CÔNG!");
-      mqttClient.subscribe("home/tsmarthome/+/+/+/command"); 
+      mqttClient.subscribe(TOPIC_CMD_WILDCARD); 
     } else {
       delay(5000);
     }

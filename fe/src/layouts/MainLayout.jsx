@@ -5,10 +5,29 @@ import {
   Mic, MicOff, Send, RefreshCw, AlertTriangle, CheckCircle2, MessageSquare, Menu, X, Clock
 } from 'lucide-react';
 import { sendAssistantChat } from '../services/api/assistant';
+import { getMyHomes } from '../services/api/home';
 
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchHomes = async () => {
+      try {
+        const res = await getMyHomes();
+        if (res && res.code === 1000 && res.data && res.data.length > 0) {
+          const defaultHomeId = res.data[0].id;
+          const currentActive = localStorage.getItem('activeHomeId') || sessionStorage.getItem('activeHomeId');
+          if (!currentActive) {
+            localStorage.setItem('activeHomeId', defaultHomeId);
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi khi tải danh sách ngôi nhà:", err);
+      }
+    };
+    fetchHomes();
+  }, []);
 
   const menuItems = [
     { path: '/home', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Tổng quan' },
@@ -52,7 +71,7 @@ export default function MainLayout() {
     }
   }, []);
   const handleLogout = () => {
-    const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email'];
+    const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email', 'activeHomeId'];
     keysToRemove.forEach(key => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
@@ -104,8 +123,10 @@ export default function MainLayout() {
   const confirmLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('activeHomeId');
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('refreshToken');
+    sessionStorage.removeItem('activeHomeId');
     navigate('/');
   };
 

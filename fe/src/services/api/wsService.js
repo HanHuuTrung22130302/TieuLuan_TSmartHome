@@ -2,13 +2,14 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs';
 
 class WsService {
-  connect(onMessageReceived) {
-    // Khởi tạo client cục bộ, không gắn vào this.client
+  connect(homeId, onMessageReceived) {
+    if (typeof homeId === 'function') {
+      onMessageReceived = homeId;
+      homeId = undefined;
+    }
     const client = new Client({
       webSocketFactory: () => {
         const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        // return new SockJS(`http://localhost:8080/ws-smarthome?token=${token}`);
-        // return new SockJS(`http://171.227.82.185:8080/ws-smarthome?token=${token}`);
         return new SockJS(`/ws-smarthome?token=${token}`);
       },
       beforeConnect: () => {
@@ -23,12 +24,28 @@ class WsService {
     });
 
     client.onConnect = () => {
-      client.subscribe('/topic/home-dashboard', (message) => {
-        if (message.body) {
-          const rawData = JSON.parse(message.body);
-          onMessageReceived(rawData);
-        }
-      });
+      const activeHomeId = homeId || localStorage.getItem('activeHomeId') || sessionStorage.getItem('activeHomeId');
+      if (activeHomeId) {
+        client.subscribe(`/topic/home-dashboard/${activeHomeId}`, (message) => {
+          if (message.body) {
+            const rawData = JSON.parse(message.body);
+            onMessageReceived(rawData);
+          }
+        });
+        client.subscribe(`/topic/smarthome/realtime/${activeHomeId}`, (message) => {
+          if (message.body) {
+            const rawData = JSON.parse(message.body);
+            onMessageReceived(rawData);
+          }
+        });
+      } else {
+        client.subscribe('/topic/home-dashboard', (message) => {
+          if (message.body) {
+            const rawData = JSON.parse(message.body);
+            onMessageReceived(rawData);
+          }
+        });
+      }
     };
 
     client.onStompError = (frame) => {

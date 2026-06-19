@@ -12,18 +12,26 @@ import java.util.UUID;
 public interface DeviceRepository extends JpaRepository<Device, UUID> {
     Optional<Device> findByName(String name);
 
+    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r LEFT JOIN FETCH r.home h WHERE h.id = :homeId AND d.name = :name")
+    Optional<Device> findByHomeIdAndName(@Param("homeId") UUID homeId, @Param("name") String name);
+
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r WHERE " +
+            "r.home.id IN :homeIds AND " +
             "(:deviceType = 'all' OR d.deviceType = :deviceType) AND " +
             "(:roomId IS NULL OR r.id = :roomId) AND " +
             "(:state IS NULL OR d.state = :state) " +
             "ORDER BY d.createdAt DESC")
     List<Device> findDevicesFiltered(
+            @Param("homeIds") List<UUID> homeIds,
             @Param("deviceType") String deviceType,
             @Param("roomId") UUID roomId,
             @Param("state") Boolean state);
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r " +
-            "WHERE d.deviceType IN ('security', 'safety', 'radar') AND d.isFake = false " +
+            "WHERE r.home.id IN :homeIds AND d.deviceType IN ('security', 'safety', 'radar') AND d.isFake = false " +
             "ORDER BY d.createdAt DESC")
-    List<Device> findActiveSecurityDevices();
+    List<Device> findActiveSecurityDevices(@Param("homeIds") List<UUID> homeIds);
+
+    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r WHERE r.home.id IN :homeIds")
+    List<Device> findAllByHomeIds(@Param("homeIds") List<UUID> homeIds);
 }

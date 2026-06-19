@@ -6,10 +6,15 @@ import com.tsmarthome.be.entity.Device;
 import com.tsmarthome.be.entity.DeviceLog;
 import com.tsmarthome.be.entity.DeviceState;
 import com.tsmarthome.be.entity.SensorData;
+import com.tsmarthome.be.entity.Home;
 import com.tsmarthome.be.repository.DeviceLogRepository;
 import com.tsmarthome.be.repository.DeviceRepository;
 import com.tsmarthome.be.repository.DeviceStateRepository;
 import com.tsmarthome.be.repository.SensorDataRepository;
+import com.tsmarthome.be.repository.HomeRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.repository.UserProfileRepository;
+import com.tsmarthome.be.service.TelegramService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +31,7 @@ import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -48,14 +54,18 @@ public class MqttService implements MqttCallbackExtended {
     private final SensorDataRepository sensorDataRepository;
     private final DeviceStateRepository deviceStateRepository;
     private final DeviceLogRepository deviceLogRepository;
+    private final HomeRepository homeRepository;
+    private final UserHomeRepository userHomeRepository;
+    private final UserProfileRepository userProfileRepository;
+    private final TelegramService telegramService;
 
     private final Map<String, Device> deviceCache = new ConcurrentHashMap<>();
     private final Object mqttLock = new Object();
 
     private void subscribeTopics() throws MqttException {
-        mqttClient.subscribe("home/tsmarthome/+/+/+/data", 1);
-        mqttClient.subscribe("home/tsmarthome/+/+/+/status", 1);
-        log.info("Đã subscribe các topic /data và /status");
+        mqttClient.subscribe("+/home/tsmarthome/+/+/+/data", 1);
+        mqttClient.subscribe("+/home/tsmarthome/+/+/+/status", 1);
+        log.info("Đã subscribe các topic động: +/home/tsmarthome/+/+/+/data và status");
     }
 
     @Override
@@ -91,24 +101,22 @@ public class MqttService implements MqttCallbackExtended {
         }
     }
 
-    // --- HÀM MỚI: Đồng bộ trạng thái từ DB xuống IoT khi Backend chạy lại ---
     public void syncDeviceStatesToIoT() {
         log.info("Đang tiến hành đồng bộ State từ Database xuống các thiết bị IoT...");
         List<Device> devices = deviceRepository.findAll();
-
         for (Device device : devices) {
-            // Chỉ gửi lệnh cho các thiết bị đang hoạt động (isFake = false) và có giá trị state
-            if (Boolean.FALSE.equals(device.getIsFake()) && device.getState() != null && device.getMqttTopic() != null) {
-                // Bỏ qua cảm biến môi trường (vì chúng chạy ngầm, không nhận lệnh)
+            if (device != null && Boolean.FALSE.equals(device.getIsFake()) && device.getState() != null && device.getMqttTopic() != null) {
                 if ("temperature".equals(device.getDeviceType()) || "air_quality".equals(device.getDeviceType())) {
                     continue;
                 }
-
-                String commandTopic = device.getMqttTopic() + "/command";
+                UUID homeId = (device.getRoom() != null && device.getRoom().getHome() != null)
+                        ? device.getRoom().getHome().getId() 
+                        : null;
+                if (homeId == null) continue;
+                String commandTopic = homeId.toString() + "/" + device.getMqttTopic() + "/command";
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("deviceId", device.getName());
                 payload.put("state", device.getState());
-
                 publishCommand(commandTopic, payload);
                 try {
                     Thread.sleep(50);
@@ -127,53 +135,84 @@ public class MqttService implements MqttCallbackExtended {
             String payload = new String(message.getPayload());
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
 
+            String homeIdStr = (String) data.get("homeId");
+            UUID homeId = null;
+            if (homeIdStr != null) {
+                try {
+                    homeId = UUID.fromString(homeIdStr);
+                } catch (IllegalArgumentException e) {
+                    log.warn("Payload homeId không phải là UUID hợp lệ: {}", homeIdStr);
+                }
+            }
+
+            if (homeId == null) {
+                int firstSlash = topic.indexOf('/');
+                if (firstSlash != -1) {
+                    String topicHomeId = topic.substring(0, firstSlash);
+                    try {
+                        homeId = UUID.fromString(topicHomeId);
+                    } catch (IllegalArgumentException e) {
+                        // ignore
+                    }
+                }
+            }
+
+            if (homeId == null) {
+                log.warn("Không xác định được homeId từ cả payload và topic: {}", topic);
+                return;
+            }
+
             if (topic.endsWith("/data")) {
-                handleSensorData(topic, data);
+                handleSensorData(homeId, data);
             } else if (topic.endsWith("/status")) {
-                handleDeviceStatus(topic, data);
+                handleDeviceStatus(homeId, data);
             }
         } catch (Exception e) {
             log.error("Lỗi xử lý payload MQTT tại {}: {}", topic, e.getMessage());
         }
     }
 
-    private Device getDeviceFromCache(String deviceName) {
-        if (deviceCache.containsKey(deviceName)) {
-            return deviceCache.get(deviceName);
+    private Device getDeviceFromCache(UUID homeId, String deviceName) {
+        if (homeId == null || deviceName == null) return null;
+        String cacheKey = homeId + ":" + deviceName;
+        if (deviceCache.containsKey(cacheKey)) {
+            return deviceCache.get(cacheKey);
         }
 
-        Device device = deviceRepository.findByName(deviceName).orElse(null);
+        Device device = deviceRepository.findByHomeIdAndName(homeId, deviceName).orElse(null);
         if (device != null) {
-            deviceCache.put(deviceName, device);
+            deviceCache.put(cacheKey, device);
         } else {
-            log.warn("CẢNH BÁO: Không tìm thấy thiết bị '{}' trong Database! Dữ liệu sẽ bị bỏ qua.", deviceName);
+            log.warn("CẢNH BÁO: Không tìm thấy thiết bị '{}' thuộc Home '{}' trong Database! Dữ liệu sẽ bị bỏ qua.", deviceName, homeId);
         }
         return device;
     }
 
     @Transactional
-    protected void handleSensorData(String topic, Map<String, Object> data) {
+    protected void handleSensorData(UUID homeId, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
         if (deviceName == null) return;
 
-        Device device = getDeviceFromCache(deviceName);
+        Device device = getDeviceFromCache(homeId, deviceName);
 
         if (device != null) {
-            boolean needSaveDevice = false;
-
+            boolean deviceChanged = false;
             if (data.containsKey("isFake")) {
                 device.setIsFake((Boolean) data.get("isFake"));
-                needSaveDevice = true;
+                deviceChanged = true;
             }
 
             if (data.containsKey("status")) {
-                device.setStatus(String.valueOf(data.get("status")));
-                needSaveDevice = true;
+                String statusVal = String.valueOf(data.get("status"));
+                device.setStatus(statusVal);
+                deviceChanged = true;
             }
 
-            if (needSaveDevice) {
+            if (deviceChanged) {
                 deviceRepository.save(device);
             }
+
+            triggerTelegramNotificationIfNeeded(device, data);
 
             SensorData sensorData = SensorData.builder()
                     .device(device)
@@ -188,7 +227,6 @@ public class MqttService implements MqttCallbackExtended {
 
             sensorDataRepository.save(sensorData);
 
-            // --- LOGIC MỚI: LƯU VÀO BẢNG device_logs CHO CÁC CẢM BIẾN ---
             String type = device.getDeviceType();
             if ("safety".equals(type) || "environment".equals(type) || "security".equals(type) || "radar".equals(type)) {
                 String actionValue = data.containsKey("value") ? String.valueOf(data.get("value")) : "Ghi nhận dữ liệu";
@@ -202,42 +240,42 @@ public class MqttService implements MqttCallbackExtended {
                 deviceLogRepository.save(logEntry);
             }
 
-            messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
+            messagingTemplate.convertAndSend("/topic/home-dashboard/" + homeId.toString(), (Object) data);
         }
     }
 
     @Transactional
-    protected void handleDeviceStatus(String topic, Map<String, Object> data) {
+    protected void handleDeviceStatus(UUID homeId, Map<String, Object> data) {
         String deviceName = (String) data.get("deviceId");
         if (deviceName == null) return;
 
-        Device device = getDeviceFromCache(deviceName);
+        Device device = getDeviceFromCache(homeId, deviceName);
 
         if (device != null) {
-            boolean needSaveDevice = false;
-
+            boolean deviceChanged = false;
             if (data.containsKey("isFake")) {
                 device.setIsFake((Boolean) data.get("isFake"));
-                needSaveDevice = true;
+                deviceChanged = true;
             }
 
-            if (data.containsKey("state")) {
-                device.setState((Boolean) data.get("state"));
-                needSaveDevice = true;
+            if (data.containsKey("state") || data.containsKey("status")) {
+                if (data.containsKey("state")) {
+                    device.setState((Boolean) data.get("state"));
+                }
+                if (data.containsKey("status")) {
+                    device.setStatus(String.valueOf(data.get("status")));
+                }
+                deviceChanged = true;
             }
 
-            if (data.containsKey("status")) {
-                device.setStatus(String.valueOf(data.get("status")));
-                needSaveDevice = true;
-            }
-
-            if (needSaveDevice) {
+            if (deviceChanged) {
                 deviceRepository.save(device);
             }
 
+            triggerTelegramNotificationIfNeeded(device, data);
+
             LocalDateTime actionTime = extractTimestamp(data);
 
-            // GHI NHẬN LỊCH SỬ VÀO BẢNG device_states (Đã sửa lỗi lưu đúp)
             DeviceState stateObj = DeviceState.builder()
                     .device(device)
                     .state(data)
@@ -245,7 +283,6 @@ public class MqttService implements MqttCallbackExtended {
                     .build();
             deviceStateRepository.save(stateObj);
 
-            // Xác định hành động để in ra Log Console cho dễ debug
             String actionValue = "Cập nhật trạng thái";
             if (data.containsKey("value")) {
                 actionValue = String.valueOf(data.get("value"));
@@ -255,7 +292,84 @@ public class MqttService implements MqttCallbackExtended {
             }
             log.info("Đã cập nhật Trạng thái cho thiết bị: {} -> {}", deviceName, actionValue);
 
-            messagingTemplate.convertAndSend("/topic/home-dashboard", (Object) data);
+            messagingTemplate.convertAndSend("/topic/home-dashboard/" + homeId.toString(), (Object) data);
+        }
+    }
+
+    private void triggerTelegramNotificationIfNeeded(Device device, Map<String, Object> data) {
+        if (device == null || device.getDeviceType() == null) return;
+
+        String type = device.getDeviceType();
+        if ("security".equals(type) || "radar".equals(type)) {
+            boolean isAlert = false;
+            String status = null;
+            String value = null;
+
+            if (data.containsKey("status")) {
+                status = String.valueOf(data.get("status"));
+                String lower = status.toLowerCase();
+                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện")
+                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect")) {
+                    isAlert = true;
+                }
+            }
+
+            if (data.containsKey("value")) {
+                value = String.valueOf(data.get("value"));
+                String lower = value.toLowerCase();
+                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện")
+                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect")) {
+                    isAlert = true;
+                }
+            }
+
+            if ("radar".equals(type) && data.containsKey("distance")) {
+                value = "Khoảng cách: " + data.get("distance") + " cm";
+                if (status == null || status.isBlank()) {
+                    status = "Phát hiện";
+                    isAlert = true;
+                }
+            }
+
+            if (isAlert) {
+                String homeName = (device.getRoom() != null && device.getRoom().getHome() != null)
+                        ? device.getRoom().getHome().getName() : "Không xác định";
+                String roomName = (device.getRoom() != null) ? device.getRoom().getName() : "Không xác định";
+                String deviceLabel = device.getLabel() != null ? device.getLabel() : device.getName();
+
+                String alertStatus = status != null ? status : "Cảnh báo";
+                String alertValue = value != null ? value : "Phát hiện sự kiện an ninh";
+
+                String message = String.format(
+                        "⚠️ <b>CẢNH BÁO AN NINH TSMARTHOME</b> ⚠️\n\n" +
+                        "🏡 <b>Nhà:</b> %s\n" +
+                        "🚪 <b>Phòng:</b> %s\n" +
+                        "🔌 <b>Thiết bị:</b> %s (%s)\n" +
+                        "📝 <b>Trạng thái:</b> %s\n" +
+                        "📊 <b>Dữ liệu:</b> %s",
+                        homeName, roomName, deviceLabel, device.getDeviceType(), alertStatus, alertValue
+                );
+
+                UUID homeId = (device.getRoom() != null && device.getRoom().getHome() != null)
+                        ? device.getRoom().getHome().getId() : null;
+
+                if (homeId != null) {
+                    try {
+                        List<com.tsmarthome.be.entity.UserHome> userHomes = userHomeRepository.findByHomeId(homeId);
+                        for (com.tsmarthome.be.entity.UserHome uh : userHomes) {
+                            if (uh.getUser() != null) {
+                                userProfileRepository.findById(uh.getUser().getId()).ifPresent(profile -> {
+                                    if (profile.getTelegramChatId() != null && !profile.getTelegramChatId().isBlank()) {
+                                        telegramService.sendMessage(profile.getTelegramChatId(), message);
+                                    }
+                                });
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("Lỗi khi gửi thông báo Telegram cho thiết bị {}: {}", device.getName(), e.getMessage());
+                    }
+                }
+            }
         }
     }
 

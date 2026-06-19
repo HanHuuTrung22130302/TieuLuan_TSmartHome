@@ -81,7 +81,7 @@ public class AssistantService {
                         .append(" | Label: ").append(d.getLabel() != null ? d.getLabel() : d.getName())
                         .append(" | Type: ").append(d.getDeviceType())
                         .append(" | Current State: ").append(d.getState() == null ? "None" : (d.getState() ? "ON" : "OFF"))
-                        .append(" | Status: ").append(d.getStatus())
+                        .append(" | Status: ").append(d.getStatus() != null ? d.getStatus() : "Unknown")
                         .append("\n");
             }
 
@@ -196,7 +196,7 @@ public class AssistantService {
                             Optional<Device> dOpt = deviceRepository.findByName(devName);
                             if (dOpt.isPresent()) {
                                 Device device = dOpt.get();
-                                if (device.getState() != null && !Boolean.TRUE.equals(device.getIsFake())) {
+                                if (!Boolean.TRUE.equals(device.getIsFake()) && !"temperature".equals(device.getDeviceType()) && !"air_quality".equals(device.getDeviceType())) {
                                     try {
                                         deviceManagementService.controlDevice(device.getId(), targetState);
                                         success++;
@@ -314,7 +314,7 @@ public class AssistantService {
                 Thread.sleep(100);
                 entityManager.clear(); // Clear L1 cache to reload from DB
                 Device updated = deviceRepository.findById(device.getId()).orElse(null);
-                if (updated != null && updated.getState() == firstCommand) {
+                if (updated != null && updated.getState() != null && updated.getState() == firstCommand) {
                     responded = true;
                     break;
                 }
@@ -332,7 +332,7 @@ public class AssistantService {
                     Thread.sleep(100);
                     entityManager.clear();
                     Device updated = deviceRepository.findById(device.getId()).orElse(null);
-                    if (updated != null && updated.getState() == originalState) {
+                    if (updated != null && updated.getState() != null && updated.getState() == originalState) {
                         break;
                     }
                 }
@@ -348,9 +348,11 @@ public class AssistantService {
                 // Khôi phục hiển thị trạng thái ban đầu trên DB
                 entityManager.clear();
                 Device updated = deviceRepository.findById(device.getId()).orElse(null);
-                if (updated != null && updated.getState() != originalState) {
-                    updated.setState(originalState);
-                    deviceRepository.save(updated);
+                if (updated != null) {
+                    if (updated.getState() != originalState) {
+                        updated.setState(originalState);
+                        deviceRepository.save(updated);
+                    }
                 }
 
                 return AssistantChatResponse.builder()
