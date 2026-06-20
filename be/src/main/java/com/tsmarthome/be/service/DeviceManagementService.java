@@ -5,10 +5,13 @@ import com.tsmarthome.be.entity.CameraStream;
 import com.tsmarthome.be.entity.Device;
 import com.tsmarthome.be.entity.DeviceLog;
 import com.tsmarthome.be.entity.DeviceState;
+import com.tsmarthome.be.entity.User;
 import com.tsmarthome.be.repository.CameraStreamRepository;
 import com.tsmarthome.be.repository.DeviceLogRepository;
 import com.tsmarthome.be.repository.DeviceRepository;
 import com.tsmarthome.be.repository.DeviceStateRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,52 +31,92 @@ public class DeviceManagementService {
     private final CameraStreamRepository cameraStreamRepository;
     private final DeviceStateRepository deviceStateRepository;
     private final DeviceLogRepository deviceLogRepository;
+    private final UserHomeRepository userHomeRepository;
+    private final SecurityUtil securityUtil;
 
     // ĐÃ SỬA: Đổi kiểu String status -> Boolean state
     public List<DeviceResponse> getFilteredDevices(String deviceType, UUID roomId, Boolean state) {
-        List<Device> devices = deviceRepository.findDevicesFiltered(deviceType, roomId, state);
-        return devices.stream().map(d -> DeviceResponse.builder()
-                .id(d.getId())
-                .name(d.getName())
-                .label(d.getLabel())
-                .deviceType(d.getDeviceType())
-                .mqttTopic(d.getMqttTopic())
-                .status(d.getStatus())
-                .state(d.getState()) // TRẢ VỀ STATE CHO FRONTEND LÀM CÔNG TẮC BẬT/TẮT
-                .isFake(d.getIsFake())
-                .icon(d.getIcon())
-                .pos2dX(d.getPos2dX())
-                .pos2dY(d.getPos2dY())
-                .roomId(d.getRoom() != null ? d.getRoom().getId() : null)
-                .roomName(d.getRoom() != null ? d.getRoom().getName() : "Không xác định")
-                .build()
-        ).collect(Collectors.toList());
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return List.of();
+
+        List<Device> devices = deviceRepository.findDevicesFiltered(homeIds, deviceType, roomId, state);
+        return devices.stream().map(d -> {
+            String statusVal = d.getStatus() != null ? d.getStatus() : "Không xác định";
+            Boolean stateVal = d.getState() != null ? d.getState() : false;
+
+            return DeviceResponse.builder()
+                    .id(d.getId())
+                    .name(d.getName())
+                    .label(d.getLabel())
+                    .deviceType(d.getDeviceType())
+                    .mqttTopic(d.getMqttTopic())
+                    .status(statusVal)
+                    .state(stateVal)
+                    .isFake(d.getIsFake())
+                    .icon(d.getIcon())
+                    .pos2dX(d.getPos2dX())
+                    .pos2dY(d.getPos2dY())
+                    .roomId(d.getRoom() != null ? d.getRoom().getId() : null)
+                    .roomName(d.getRoom() != null ? d.getRoom().getName() : "Không xác định")
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    public void validateDeviceControlPermission(UUID deviceId) {
+        User user = securityUtil.getCurrentUser();
+        Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
+
+        List<UUID> userHomeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (userHomeIds.isEmpty()) {
+            throw new RuntimeException("Bạn không sở hữu ngôi nhà nào để thực hiện thao tác");
+        }
+
+        UUID deviceHomeId = (device.getRoom() != null && device.getRoom().getHome() != null)
+                ? device.getRoom().getHome().getId()
+                : null;
+
+        // Nếu thiết bị có liên kết Home, kiểm tra xem user có thuộc Home đó không
+        if (deviceHomeId != null && !userHomeIds.contains(deviceHomeId)) {
+            throw new RuntimeException("Bạn không có quyền truy cập vào thiết bị này");
+        }
     }
 
     public void controlDevice(UUID id, boolean action) {
-        Device device = deviceRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị yêu cầu điều khiển"));
+        validateDeviceControlPermission(id);
+        
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) {
+            throw new RuntimeException("Không tìm thấy homeId để gửi lệnh");
+        }
+        UUID homeId = homeIds.get(0); // Lấy home của user hiện tại
+
+        Device device = deviceRepository.findById(id).get();
 
         if ("temperature".equals(device.getDeviceType()) || "air_quality".equals(device.getDeviceType())) {
             throw new RuntimeException("Cảm biến môi trường chạy ngầm bảo vệ hệ thống, không hỗ trợ điều khiển tắt mở");
         }
 
-        String commandTopic = device.getMqttTopic() + "/command";
+        String commandTopic = homeId.toString() + "/" + device.getMqttTopic() + "/command";
         Map<String, Object> payload = new HashMap<>();
         payload.put("deviceId", device.getName());
         payload.put("state", action);
 
         mqttService.publishCommand(commandTopic, payload);
-        // ĐÃ XÓA dòng gửi trùng lặp ở đây
     }
 
     // Nhớ khai báo: private final CameraStreamRepository cameraStreamRepository;
 
     public List<SecuritySidebarResponse> getSecuritySidebarDevices() {
-        List<Device> securityDevices = deviceRepository.findActiveSecurityDevices();
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return List.of();
+
+        List<Device> securityDevices = deviceRepository.findActiveSecurityDevices(homeIds);
         List<CameraStream> cameras = cameraStreamRepository.findAll();
 
-        // Tạo Map để tra cứu Stream URL siêu tốc theo ID Thiết bị
         Map<UUID, String> cameraMap = cameras.stream()
                 .collect(Collectors.toMap(c -> c.getDevice().getId(), CameraStream::getStreamUrl));
 
@@ -91,30 +134,36 @@ public class DeviceManagementService {
 
     // ... code cũ giữ nguyên
 
-    // THÊM HÀM NÀY CHO BẢN ĐỒ 2D/3D
     public List<DeviceResponse> getAllMapDevices() {
-        // Lấy toàn bộ thiết bị (có thể dùng chung query lấy tất cả)
-        List<Device> devices = deviceRepository.findAll();
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return List.of();
 
-        return devices.stream().map(d -> DeviceResponse.builder()
-                .id(d.getId())
-                .name(d.getName())
-                .label(d.getLabel())
-                .deviceType(d.getDeviceType())
-                .mqttTopic(d.getMqttTopic())
-                .status(d.getStatus())
-                .state(d.getState())
-                .isFake(d.getIsFake())
-                .icon(d.getIcon())
-                .pos2dX(d.getPos2dX())
-                .pos2dY(d.getPos2dY())
-                .pos3dX(d.getPos3dX()) // Map tọa độ 3D
-                .pos3dY(d.getPos3dY())
-                .pos3dZ(d.getPos3dZ())
-                .roomId(d.getRoom() != null ? d.getRoom().getId() : null)
-                .roomName(d.getRoom() != null ? d.getRoom().getName() : "Không xác định")
-                .build()
-        ).collect(Collectors.toList());
+        List<Device> devices = deviceRepository.findAllByHomeIds(homeIds);
+
+        return devices.stream().map(d -> {
+            String statusVal = d.getStatus() != null ? d.getStatus() : "Không xác định";
+            Boolean stateVal = d.getState() != null ? d.getState() : false;
+
+            return DeviceResponse.builder()
+                    .id(d.getId())
+                    .name(d.getName())
+                    .label(d.getLabel())
+                    .deviceType(d.getDeviceType())
+                    .mqttTopic(d.getMqttTopic())
+                    .status(statusVal)
+                    .state(stateVal)
+                    .isFake(d.getIsFake())
+                    .icon(d.getIcon())
+                    .pos2dX(d.getPos2dX())
+                    .pos2dY(d.getPos2dY())
+                    .pos3dX(d.getPos3dX())
+                    .pos3dY(d.getPos3dY())
+                    .pos3dZ(d.getPos3dZ())
+                    .roomId(d.getRoom() != null ? d.getRoom().getId() : null)
+                    .roomName(d.getRoom() != null ? d.getRoom().getName() : "Không xác định")
+                    .build();
+        }).collect(Collectors.toList());
     }
     public List<CameraStreamResponse> getAllCameraStreams() {
         // cameraStreamRepository đã được inject từ bước trước
@@ -131,16 +180,15 @@ public class DeviceManagementService {
 
     // ĐÃ SỬA: Nhận thêm UUID deviceId
     public List<DeviceHistoryResponse> getDeviceHistory(UUID deviceId, String filter) {
+        validateDeviceControlPermission(deviceId);
         LocalDateTime startDate = LocalDateTime.now();
 
-        // Logic filter: 3 ngày (3d) hoặc 1 ngày (mặc định)
         if ("3d".equalsIgnoreCase(filter)) {
             startDate = startDate.minusDays(3);
         } else {
             startDate = startDate.minusDays(1);
         }
 
-        // Truyền deviceId vào để lọc
         List<DeviceState> states = deviceStateRepository.findHistoryByDeviceIdAndDate(deviceId, startDate);
 
         return states.stream().map(stateObj -> {
@@ -174,6 +222,7 @@ public class DeviceManagementService {
 
     // HÀM LẤY LỊCH SỬ DỮ LIỆU CẢM BIẾN / CẢNH BÁO
     public List<DeviceAlertResponse> getDeviceAlerts(UUID deviceId, String filter) {
+        validateDeviceControlPermission(deviceId);
         LocalDateTime startDate = LocalDateTime.now();
 
         if ("3d".equalsIgnoreCase(filter)) {

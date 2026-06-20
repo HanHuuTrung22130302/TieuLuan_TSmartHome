@@ -2,8 +2,11 @@ package com.tsmarthome.be.service;
 
 import com.tsmarthome.be.entity.Device;
 import com.tsmarthome.be.entity.Schedule;
+import com.tsmarthome.be.entity.User;
 import com.tsmarthome.be.repository.DeviceRepository;
 import com.tsmarthome.be.repository.ScheduleRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.util.SecurityUtil;
 import com.tsmarthome.be.dto.schedule.request.ScheduleRequest;
 import com.tsmarthome.be.dto.schedule.response.ScheduleResponse;
 import lombok.RequiredArgsConstructor;
@@ -26,17 +29,41 @@ public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
     private final DeviceRepository deviceRepository;
     private final DeviceService deviceService;
+    private final SecurityUtil securityUtil;
+    private final UserHomeRepository userHomeRepository;
+
+    private Device validateDeviceAccess(UUID deviceId) {
+        User user = securityUtil.getCurrentUser();
+        Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
+
+        UUID homeId = (device.getRoom() != null && device.getRoom().getHome() != null)
+                ? device.getRoom().getHome().getId()
+                : null;
+
+        if (homeId == null) {
+            throw new RuntimeException("Thiết bị không liên kết với ngôi nhà nào");
+        }
+
+        List<UUID> userHomeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (!userHomeIds.contains(homeId)) {
+            throw new RuntimeException("Bạn không có quyền thao tác với thiết bị này");
+        }
+        return device;
+    }
 
     public List<ScheduleResponse> getAllSchedules() {
-        return scheduleRepository.findAllWithDevice().stream()
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) return List.of();
+        return scheduleRepository.findAllWithDevice(homeIds).stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional
     public ScheduleResponse createSchedule(ScheduleRequest request) {
-        Device device = deviceRepository.findById(request.getDeviceId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
+        Device device = validateDeviceAccess(request.getDeviceId());
 
         Schedule schedule = new Schedule();
         schedule.setDevice(device);
@@ -62,9 +89,12 @@ public class ScheduleService {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy lịch hẹn giờ"));
 
+        if (schedule.getDevice() != null) {
+            validateDeviceAccess(schedule.getDevice().getId());
+        }
+
         if (request.getDeviceId() != null) {
-            Device device = deviceRepository.findById(request.getDeviceId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
+            Device device = validateDeviceAccess(request.getDeviceId());
             schedule.setDevice(device);
         }
 
@@ -97,7 +127,12 @@ public class ScheduleService {
 
     @Transactional
     public void deleteSchedule(UUID id) {
-        scheduleRepository.deleteById(id);
+        Schedule schedule = scheduleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy lịch hẹn giờ"));
+        if (schedule.getDevice() != null) {
+            validateDeviceAccess(schedule.getDevice().getId());
+        }
+        scheduleRepository.delete(schedule);
     }
 
     private LocalDateTime parseDateTime(String timeStr) {

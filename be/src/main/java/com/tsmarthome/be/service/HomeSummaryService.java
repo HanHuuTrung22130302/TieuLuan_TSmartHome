@@ -3,13 +3,17 @@ package com.tsmarthome.be.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tsmarthome.be.dto.assistant.response.AssistantChatResponse;
+import com.tsmarthome.be.entity.User;
 import com.tsmarthome.be.repository.SensorDataRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -17,16 +21,28 @@ public class HomeSummaryService {
 
     private final SensorDataRepository sensorDataRepository;
     private final GeminiService geminiService;
+    private final UserHomeRepository userHomeRepository;
+    private final SecurityUtil securityUtil;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AssistantChatResponse summarizeToday() {
+        User user = securityUtil.getCurrentUser();
+        List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+        if (homeIds.isEmpty()) {
+            return AssistantChatResponse.builder()
+                    .reply("Không tìm thấy ngôi nhà nào liên kết với tài khoản của bạn để tổng hợp dữ liệu.")
+                    .actionExecuted(false)
+                    .actionType("HOME_SUMMARY")
+                    .build();
+        }
+
         LocalDate today = LocalDate.now();
         LocalDateTime startTime = today.atStartOfDay();
         LocalDateTime endTime = today.plusDays(1).atStartOfDay();
 
-        List<Object[]> counts = sensorDataRepository.countTodayWarningsByDeviceType(startTime, endTime);
-        String latestDht22 = sensorDataRepository.findLatestDht22DataToday(startTime, endTime);
-        List<Object[]> recentWarnings = sensorDataRepository.findRecentWarningSamplesToday(startTime, endTime);
+        List<Object[]> counts = sensorDataRepository.countTodayWarningsByDeviceType(homeIds, startTime, endTime);
+        String latestDht22 = sensorDataRepository.findLatestDht22DataToday(homeIds, startTime, endTime);
+        List<Object[]> recentWarnings = sensorDataRepository.findRecentWarningSamplesToday(homeIds, startTime, endTime);
 
         long radarCount = 0;
         long safetyCount = 0;

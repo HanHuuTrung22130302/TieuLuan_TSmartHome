@@ -34,6 +34,7 @@ static const char* MQTT_CLIENT_ID = "ESP32_TSmartHome_Node1";
 #define PIN_ECHO_2 21
 
 // --- TOPICS ---
-const char* TOPIC_CMD_WILDCARD = "home/tsmarthome/+/+/+/command";
+const char* TOPIC_CMD_WILDCARD = "11111111-1111-1111-1111-111111111111/home/tsmarthome/+/+/+/command";
+const char* TOPIC_PREFIX = "11111111-1111-1111-1111-111111111111/home/tsmarthome/";
 
 #endif

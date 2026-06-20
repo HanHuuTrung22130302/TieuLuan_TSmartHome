@@ -34,12 +34,6 @@ public class Device {
     @Column(name = "mqtt_topic")
     private String mqttTopic;
 
-    @Column(length = 50)
-    private String status;
-
-    @Column(name = "state")
-    private Boolean state;
-
     @Column(name = "is_fake")
     private Boolean isFake;
 
@@ -72,4 +66,10 @@ public class Device {
 
     @Column(name = "pos_3d_z")
     private Double pos3dZ;
+
+    @Column(length = 50)
+    private String status;
+
+    @Column(name = "state")
+    private Boolean state;
 }

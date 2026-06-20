@@ -2,8 +2,12 @@ package com.tsmarthome.be.service;
 
 import com.tsmarthome.be.entity.Device;
 import com.tsmarthome.be.entity.DeviceState;
+import com.tsmarthome.be.entity.Home;
+import com.tsmarthome.be.entity.User;
 import com.tsmarthome.be.repository.DeviceRepository;
 import com.tsmarthome.be.repository.DeviceStateRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
+import com.tsmarthome.be.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -23,6 +27,8 @@ public class DeviceService {
     private final DeviceStateRepository deviceStateRepository;
     private final MqttService mqttService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final SecurityUtil securityUtil;
+    private final UserHomeRepository userHomeRepository;
 
     @Transactional
     public void controlDevice(UUID deviceId, Map<String, Object> command) {
@@ -42,26 +48,32 @@ public class DeviceService {
 
     private void handleFakeDevice(Device device, Map<String, Object> command) {
         // 1. Cập nhật Status hiển thị (Bật/Tắt)
+        Boolean targetState = null;
         if (command.containsKey("state")) {
-            device.setStatus((Boolean) command.get("state") ? "Bật" : "Tắt");
+            targetState = (Boolean) command.get("state");
         } else if (command.containsKey("enable")) {
-            device.setStatus((Boolean) command.get("enable") ? "Bật" : "Tắt");
+            targetState = (Boolean) command.get("enable");
         }
-        deviceRepository.save(device);
 
-        // 2. Cập nhật DeviceState (JSONB)
-//        DeviceState state = deviceStateRepository.findById(device.getId())
-//                .orElse(DeviceState.builder().device(device).deviceId(device.getId()).build());
-//        state.setState(command);
-//        state.setUpdatedAt(LocalDateTime.now());
-//        deviceStateRepository.save(state);
+        if (targetState != null) {
+            device.setState(targetState);
+            device.setStatus(targetState ? "Bật" : "Tắt");
+            deviceRepository.save(device);
+        }
 
         // 3. Đẩy WebSocket ngay lập tức để FE cập nhật UI 3D
         // Gắn thêm deviceId vào payload để FE biết cái nào vừa đổi
         command.put("deviceId", device.getName());
 
+        UUID homeId = (device.getRoom() != null && device.getRoom().getHome() != null)
+                ? device.getRoom().getHome().getId()
+                : null;
+        String destTopic = (homeId != null) 
+                ? "/topic/smarthome/realtime/" + homeId.toString() 
+                : "/topic/smarthome/realtime";
+
         // ĐÃ FIX LỖI ÉP KIỂU Ở ĐÂY:
-        messagingTemplate.convertAndSend("/topic/smarthome/realtime", (Object) command);
+        messagingTemplate.convertAndSend(destTopic, (Object) command);
     }
 
     private void handleRealDevice(Device device, Map<String, Object> command) {
@@ -73,8 +85,33 @@ public class DeviceService {
         if (baseTopic.endsWith("/data") || baseTopic.endsWith("/status")) {
             baseTopic = baseTopic.substring(0, baseTopic.lastIndexOf("/"));
         }
-        // Nối thêm đuôi /command
-        String commandTopic = baseTopic + "/command";
+
+        UUID homeId = null;
+        try {
+            User user = securityUtil.getCurrentUser();
+            if (user != null) {
+                java.util.List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(user.getId());
+                if (!homeIds.isEmpty()) {
+                    homeId = homeIds.get(0);
+                }
+            }
+        } catch (Exception e) {
+            // Không có ngữ cảnh xác thực (ví dụ chạy ngầm scheduler)
+        }
+
+        // Fallback lấy theo thực thể liên kết room/home nếu không có user session
+        if (homeId == null) {
+            homeId = (device.getRoom() != null && device.getRoom().getHome() != null)
+                    ? device.getRoom().getHome().getId()
+                    : null;
+        }
+
+        if (homeId == null) {
+            throw new RuntimeException("Thiết bị không liên kết với ngôi nhà nào");
+        }
+
+        // Nối thêm tiền tố homeId và đuôi /command
+        String commandTopic = homeId.toString() + "/" + baseTopic + "/command";
 
         // 3. Gắn deviceId vào payload theo đúng đặc tả của ESP32
         command.put("deviceId", device.getName());
@@ -82,9 +119,5 @@ public class DeviceService {
         // 4. Gửi lệnh đi
         mqttService.publishCommand(commandTopic, command);
 
-        // Ghi chú: Đã xóa log ở đây vì bên MqttService.publishCommand đã có sẵn dòng log:
-        // "Đã gửi lệnh tới ESP32 - Topic: ... | Lệnh: ..."
     }
-
-
 }
