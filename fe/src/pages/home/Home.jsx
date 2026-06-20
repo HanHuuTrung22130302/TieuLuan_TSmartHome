@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Search, Mic, ChevronDown, Wind, Droplets, Sun, 
+import {
+  Search, Mic, ChevronDown, Wind, Droplets, Sun,
   MapPin, CloudRain, Navigation, ShieldCheck, Activity,
-  Flame, Thermometer, Radar, Volume2, AlertTriangle, 
+  Flame, Thermometer, Radar, Volume2, AlertTriangle,
   CheckCircle2, Clock, Wifi, Maximize, Video, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import useWeather from '../../hooks/useWeather'; 
+import useWeather from '../../hooks/useWeather';
 import { getRecentLogs } from '../../services/api/log';
 import wsService from '../../services/api/wsService';
 import { getDeviceInfo } from '../../utils/deviceMapper';
@@ -16,21 +16,21 @@ export default function Home() {
   const [currentDate, setCurrentDate] = useState('');
   const [timeFilter] = useState('1D'); // Đã fix cứng mặc định 1D
   const [moduleFilter, setModuleFilter] = useState('all');
-  
+
   const [logs, setLogs] = useState([]);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const cameraUrl = "/camera-s3/stream";
+  const cameraUrl = "/camera-thinker/stream";
 
   const [userProfile, setUserProfile] = useState({
-    fullName: localStorage.getItem('fullName') || 'Trung Hán Hữu',
+    fullName: localStorage.getItem('fullName') || '123',
     avatarUrl: localStorage.getItem('avatarUrl') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Trung'
   });
 
   useEffect(() => {
     const handleProfileUpdate = () => {
       setUserProfile({
-        fullName: localStorage.getItem('fullName') || 'Trung Hán Hữu',
+        fullName: localStorage.getItem('fullName') || '123',
         avatarUrl: localStorage.getItem('avatarUrl') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Trung'
       });
     };
@@ -99,13 +99,13 @@ export default function Home() {
     if (log.type === 'temp') return { icon: Thermometer, color: 'text-sky-400', bg: 'bg-sky-400/10', border: 'border-sky-400/30' };
     if (log.type === 'gas') return { icon: Wind, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/30' };
     if (log.type === 'radar') return { icon: Radar, color: 'text-indigo-400', bg: 'bg-indigo-400/10', border: 'border-indigo-400/30' };
-    
+
     return { icon: Activity, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/5' };
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto overflow-x-hidden font-sans">
-      
+
       {/* ================= HEADER ================= */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
         <div>
@@ -120,7 +120,7 @@ export default function Home() {
           <button className="p-3 bg-white text-black rounded-full hover:bg-slate-200 transition-colors shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.2)]">
             <Mic className="w-4 h-4" />
           </button>
-          <div 
+          <div
             onClick={() => window.dispatchEvent(new CustomEvent('tsmarthome_open_profile'))}
             className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full p-1 pr-4 shrink-0 cursor-pointer hover:bg-white/10 transition-colors"
           >
@@ -135,17 +135,17 @@ export default function Home() {
 
       {/* ================= MAIN LAYOUT ================= */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
+
         {/* === CỘT TRÁI: DANH SÁCH THÔNG BÁO LOGS === */}
         <div className="xl:col-span-2 flex flex-col gap-6">
           <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-6 shadow-2xl flex flex-col h-[600px] xl:h-[calc(100vh-10rem)]">
-            
+
             {/* THANH ĐIỀU HƯỚNG CỦA CARD (XÓA CHỮ VÀ DỜI FILTER SANG TRÁI) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 shrink-0">
-              
+
               {/* Filter nằm bên trái */}
               <div className="relative">
-                <select 
+                <select
                   value={moduleFilter}
                   onChange={(e) => handleFilterChange('module', e.target.value)}
                   className="appearance-none bg-black border border-white/10 text-slate-300 text-sm font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors w-44"
@@ -162,19 +162,19 @@ export default function Home() {
               {/* Phân trang nằm bên phải */}
               {totalPages > 1 && (
                 <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded-xl p-1 shrink-0">
-                  <button 
+                  <button
                     onClick={() => setPage(p => Math.max(0, p - 1))}
                     disabled={page === 0}
                     className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                  
+
                   <span className="text-[11px] font-bold font-mono px-2 text-slate-400">
                     <strong className="text-blue-400">{page + 1}</strong>/{totalPages}
                   </span>
 
-                  <button 
+                  <button
                     onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
                     className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
@@ -190,7 +190,7 @@ export default function Home() {
               {logs.length > 0 ? logs.map((log, idx) => {
                 const style = getLogStyle(log);
                 const LogIcon = style.icon;
-                
+
                 return (
                   <div key={log.id || idx} className={`flex items-start gap-4 p-4 rounded-2xl border ${style.border} bg-white/5 hover:bg-white/10 transition-colors cursor-default`}>
                     <div className={`p-3 rounded-xl shrink-0 ${style.bg}`}>
@@ -222,30 +222,30 @@ export default function Home() {
                 </div>
               )}
             </div>
-            
+
           </div>
         </div>
 
         {/* === CỘT PHẢI: CAMERA STREAM & THỜI TIẾT === */}
         <div className="xl:col-span-1 flex flex-col gap-6 xl:h-[calc(100vh-10rem)]">
           <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl flex flex-col flex-1 min-h-[200px] relative overflow-hidden group">
-            <img 
+            <img
               src={cameraUrl}
-              
+
               className="absolute inset-0 w-full h-full object-cover bg-black"
               onError={(e) => {
                 e.target.style.display = 'none';
                 e.target.nextSibling.style.display = 'flex';
               }}
             />
-            
+
             <div className="absolute inset-0 flex-col items-center justify-center bg-slate-900 hidden">
               <Wifi className="w-10 h-10 text-slate-600 mb-3 opacity-50" />
               <p className="text-slate-400 font-bold text-sm">Camera ngoại tuyến</p>
             </div>
 
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none"></div>
-            
+
             <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
               <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_red]"></div>
@@ -257,7 +257,7 @@ export default function Home() {
             </div>
 
             <div className="absolute bottom-5 left-5 pointer-events-none">
-              <h3 className="text-lg font-bold text-white mb-0.5">Cửa chính (ESP32)</h3>
+              <h3 className="text-lg font-bold text-white mb-0.5">Cửa chính</h3>
               <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
                 <Video className="w-3 h-3" /> 1600x1200 • 30 FPS
               </p>

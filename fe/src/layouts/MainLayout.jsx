@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { sendAssistantChat } from '../services/api/assistant';
 import { getMyHomes } from '../services/api/home';
-import { getUserProfile, updateUserProfile } from '../services/api/profile';
+import { getUserProfile, updateUserProfile, generateTelegramCode, disconnectTelegram } from '../services/api/profile';
 
 export default function MainLayout() {
   const location = useLocation();
@@ -25,7 +25,8 @@ export default function MainLayout() {
     phoneNumber: '',
     region: '',
     avatarUrl: '',
-    telegramChatId: ''
+    telegramChatId: '',
+    telegramUsername: ''
   });
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -35,7 +36,53 @@ export default function MainLayout() {
     newPassword: '',
     confirmPassword: ''
   });
-  const [telegramUsername, setTelegramUsername] = useState(localStorage.getItem('telegramUsername') || '');
+
+  const [telegramLinkCode, setTelegramLinkCode] = useState(null);
+  const [telegramCodeTimer, setTelegramCodeTimer] = useState(0);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+
+  // Countdown timer hook for code expiry
+  useEffect(() => {
+    if (telegramCodeTimer <= 0) return;
+    const interval = setInterval(() => {
+      setTelegramCodeTimer(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [telegramCodeTimer]);
+
+  const formatCodeTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Polling for Telegram link status
+  useEffect(() => {
+    let intervalId = null;
+    if (showProfileModal && profileTab === 'telegram' && telegramLinkCode && telegramCodeTimer > 0 && !profileForm.telegramChatId) {
+      intervalId = setInterval(async () => {
+        try {
+          const res = await getUserProfile();
+          if (res && res.code === 1000 && res.data && res.data.telegramChatId) {
+            setProfileForm(prev => ({
+              ...prev,
+              telegramChatId: res.data.telegramChatId,
+              telegramUsername: res.data.telegramUsername || ''
+            }));
+            setTelegramLinkCode(null);
+            setTelegramCodeTimer(0);
+            setToast({ show: true, message: 'Kết nối Telegram thành công!', type: 'success' });
+            fetchProfile();
+          }
+        } catch (error) {
+          console.error("Lỗi khi kiểm tra kết nối Telegram:", error);
+        }
+      }, 5000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [showProfileModal, profileTab, telegramLinkCode, telegramCodeTimer, profileForm.telegramChatId]);
 
   const getDisplayAvatar = (url) => {
     if (!url) return "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y";
@@ -95,7 +142,8 @@ export default function MainLayout() {
           phoneNumber: res.data.phoneNumber || '',
           region: res.data.region || '',
           avatarUrl: res.data.avatarUrl || '',
-          telegramChatId: res.data.telegramChatId || ''
+          telegramChatId: res.data.telegramChatId || '',
+          telegramUsername: res.data.telegramUsername || ''
         });
         
         const fullName = `${res.data.lastName} ${res.data.firstName}`.trim();
@@ -116,7 +164,8 @@ export default function MainLayout() {
       fetchProfile();
       setIsEditingProfile(false);
       setIsChangingPassword(false);
-      setTelegramUsername(localStorage.getItem('telegramUsername') || '');
+      setTelegramLinkCode(null);
+      setTelegramCodeTimer(0);
     }
   }, [showProfileModal]);
 
@@ -164,50 +213,40 @@ export default function MainLayout() {
     }, 1000);
   };
 
-  const handleConnectTelegram = async (e) => {
-    e.preventDefault();
-    if (!profileForm.telegramChatId.trim()) {
-      setToast({ show: true, message: 'Vui lòng nhập Telegram Chat ID!', type: 'error' });
-      return;
-    }
-    setSavingProfile(true);
+  const handleGenerateTelegramCode = async () => {
+    setIsGeneratingCode(true);
     try {
-      const res = await updateUserProfile({
-        firstName: profileForm.firstName,
-        lastName: profileForm.lastName,
-        phoneNumber: profileForm.phoneNumber,
-        region: profileForm.region,
-        avatarUrl: profileForm.avatarUrl,
-        telegramChatId: profileForm.telegramChatId
-      });
-      if (res && res.code === 1000) {
-        setToast({ show: true, message: 'Kết nối Telegram thành công!', type: 'success' });
-        localStorage.setItem('telegramUsername', telegramUsername);
-        fetchProfile();
+      const res = await generateTelegramCode();
+      if (res && res.code === 1000 && res.data) {
+        setTelegramLinkCode(res.data.code);
+        // Calculate remaining seconds based on expiresAt
+        const expiresTime = new Date(res.data.expiresAt).getTime();
+        const nowTime = new Date().getTime();
+        const remainingSecs = Math.max(0, Math.floor((expiresTime - nowTime) / 1000));
+        setTelegramCodeTimer(remainingSecs > 0 ? remainingSecs : 600); // 10 minutes fallback
+        setToast({ show: true, message: 'Đã tạo mã liên kết thành công!', type: 'success' });
       }
-    } catch (err) {
-      console.error("Lỗi kết nối Telegram:", err);
-      setToast({ show: true, message: 'Kết nối Telegram thất bại!', type: 'error' });
+    } catch (error) {
+      console.error("Lỗi tạo mã liên kết:", error);
+      setToast({ show: true, message: 'Tạo mã liên kết thất bại!', type: 'error' });
     } finally {
-      setSavingProfile(false);
+      setIsGeneratingCode(false);
     }
   };
 
   const handleDisconnectTelegram = async () => {
     setSavingProfile(true);
     try {
-      const res = await updateUserProfile({
-        firstName: profileForm.firstName,
-        lastName: profileForm.lastName,
-        phoneNumber: profileForm.phoneNumber,
-        region: profileForm.region,
-        avatarUrl: profileForm.avatarUrl,
-        telegramChatId: ''
-      });
+      const res = await disconnectTelegram();
       if (res && res.code === 1000) {
+        setProfileForm(prev => ({
+          ...prev,
+          telegramChatId: '',
+          telegramUsername: ''
+        }));
+        setTelegramLinkCode(null);
+        setTelegramCodeTimer(0);
         setToast({ show: true, message: 'Hủy kết nối Telegram thành công!', type: 'success' });
-        setTelegramUsername('');
-        localStorage.removeItem('telegramUsername');
         fetchProfile();
       }
     } catch (err) {
@@ -898,7 +937,7 @@ export default function MainLayout() {
                             {profileForm.telegramChatId && (
                               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 justify-center md:justify-start text-xs text-slate-500 font-medium">
                                 <span>Telegram Chat ID: <strong className="text-slate-700 font-bold">{profileForm.telegramChatId}</strong></span>
-                                <span>Username: <strong className="text-slate-700 font-bold">@{telegramUsername || 'Chưa rõ'}</strong></span>
+                                <span>Username: <strong className="text-slate-700 font-bold">@{profileForm.telegramUsername || 'Chưa rõ'}</strong></span>
                               </div>
                             )}
                           </div>
@@ -906,50 +945,94 @@ export default function MainLayout() {
 
                         {/* Telegram Connect Form */}
                         {!profileForm.telegramChatId ? (
-                          <form onSubmit={handleConnectTelegram} className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm space-y-4">
-                            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                              <Send className="w-4 h-4 text-[#2563EB]" />
-                              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Điền thông tin kết nối</span>
-                            </div>
+                          <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm space-y-5">
+                            {telegramLinkCode ? (
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                                  <Clock className="w-4 h-4 text-blue-500 animate-pulse" />
+                                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Đang chờ liên kết từ Telegram Bot</span>
+                                </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Telegram Chat ID</label>
-                                <input 
-                                  type="text" 
-                                  value={profileForm.telegramChatId || ''} 
-                                  onChange={(e) => setProfileForm({...profileForm, telegramChatId: e.target.value})}
-                                  placeholder="Nhập ID, ví dụ: 5715975017"
-                                  required
-                                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-[#2563EB] focus:bg-white transition-colors"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Telegram Username</label>
-                                <input 
-                                  type="text" 
-                                  value={telegramUsername} 
-                                  onChange={(e) => setTelegramUsername(e.target.value)}
-                                  placeholder="Nhập Username, ví dụ: my_tele_name"
-                                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-[#2563EB] focus:bg-white transition-colors"
-                                />
-                              </div>
-                            </div>
+                                <div className="text-center py-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mã liên kết của bạn</p>
+                                  <div className="flex items-center justify-center gap-3">
+                                    <span className="text-2xl font-mono font-black text-slate-800 tracking-wider bg-white border border-slate-200 px-4 py-1.5 rounded-xl shadow-sm">
+                                      {telegramLinkCode}
+                                    </span>
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(`/link ${telegramLinkCode}`);
+                                        setToast({ show: true, message: 'Đã sao chép lệnh liên kết!', type: 'success' });
+                                      }}
+                                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-100 rounded-xl bg-white transition-all cursor-pointer"
+                                      title="Sao chép lệnh"
+                                    >
+                                      <Send className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  
+                                  {telegramCodeTimer > 0 ? (
+                                    <p className="text-[11px] text-slate-500 font-medium">
+                                      Mã sẽ hết hạn sau: <strong className="text-rose-500 font-mono font-bold">{formatCodeTimer(telegramCodeTimer)}</strong>
+                                    </p>
+                                  ) : (
+                                    <p className="text-[11px] text-rose-500 font-bold">Mã xác thực đã hết hạn. Vui lòng tạo mã mới.</p>
+                                  )}
+                                </div>
 
-                            <div className="pt-2">
-                              <button 
-                                type="submit"
-                                disabled={savingProfile}
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md shadow-blue-500/15 transition-all cursor-pointer"
-                              >
-                                {savingProfile ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                                Kết nối Telegram
-                              </button>
-                            </div>
-                          </form>
+                                <div className="text-xs text-slate-600 font-medium leading-relaxed bg-blue-50/50 p-4 rounded-xl border border-blue-50/80">
+                                  <p className="font-bold text-slate-800 mb-1">Hướng dẫn nhanh:</p>
+                                  <ol className="list-decimal pl-4 space-y-1">
+                                    <li>Nhấp vào nút <strong>Mở Telegram Bot</strong> dưới đây.</li>
+                                    <li>Nhấn nút <strong>Start</strong> trên Telegram (hoặc gửi tin nhắn: <code className="bg-white border border-slate-200 px-1 py-0.5 rounded text-blue-600 font-mono">/start {telegramLinkCode}</code>) để kết nối tự động.</li>
+                                    <li>Hệ thống web sẽ tự động nhận diện và cập nhật trạng thái khi liên kết thành công.</li>
+                                  </ol>
+                                </div>
+
+                                <div className="flex items-center gap-3 pt-2">
+                                  <a
+                                    href={`https://t.me/MYTSMARTHOME_BOT?start=${telegramLinkCode}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md shadow-blue-500/15 transition-all cursor-pointer"
+                                  >
+                                    <Send className="w-3.5 h-3.5" />
+                                    Mở Telegram Bot
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTelegramLinkCode(null);
+                                      setTelegramCodeTimer(0);
+                                    }}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-800 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 transition-all cursor-pointer"
+                                  >
+                                    Hủy tạo mã
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="py-4 space-y-4">
+                                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                                  Tích hợp Telegram Bot giúp bạn nhận ngay các cảnh báo khẩn cấp từ hệ thống nhà thông minh TSmartHome (phát hiện người, cảnh báo cháy, khí gas rò rỉ...) trực tiếp trên ứng dụng Telegram mà không cần mở trình duyệt.
+                                </p>
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={handleGenerateTelegramCode}
+                                    disabled={isGeneratingCode}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md shadow-blue-500/15 transition-all cursor-pointer"
+                                  >
+                                    {isGeneratingCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
+                                    Tạo mã liên kết Telegram
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex items-center gap-3">
-                            <button 
+                            <button
                               type="button"
                               onClick={handleSyncTelegram}
                               disabled={savingProfile}
@@ -958,7 +1041,7 @@ export default function MainLayout() {
                               <RefreshCw className="w-3.5 h-3.5" />
                               Đồng bộ lại
                             </button>
-                            <button 
+                            <button
                               type="button"
                               onClick={handleDisconnectTelegram}
                               disabled={savingProfile}
@@ -979,17 +1062,8 @@ export default function MainLayout() {
                             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex gap-3.5">
                               <div className="w-7 h-7 rounded-full bg-blue-50 text-[#2563EB] border border-blue-100 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">1</div>
                               <div>
-                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Mở Telegram Bot</h6>
-                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed mb-3">Truy cập trực tiếp tới Telegram bot chính thức của chúng tôi.</p>
-                                <a 
-                                  href="https://t.me/MYTSMARTHOME_BOT" 
-                                  target="_blank" 
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-[10px] uppercase tracking-wider rounded-lg shadow-sm transition-all"
-                                >
-                                  <Send className="w-3.5 h-3.5" />
-                                  Mở Telegram
-                                </a>
+                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Tạo mã xác thực</h6>
+                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Click chọn <strong>Tạo mã liên kết Telegram</strong> trên trang web để tạo mã bảo mật ngẫu nhiên có hiệu lực trong 10 phút.</p>
                               </div>
                             </div>
 
@@ -997,8 +1071,8 @@ export default function MainLayout() {
                             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex gap-3.5">
                               <div className="w-7 h-7 rounded-full bg-blue-50 text-[#2563EB] border border-blue-100 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">2</div>
                               <div>
-                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Truy cập Bot</h6>
-                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Tìm kiếm bot với tên tài khoản <span className="text-[#2563EB] font-bold">@MYTSMARTHOME_BOT</span> trên hộp tìm kiếm của Telegram.</p>
+                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Mở Telegram Bot</h6>
+                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Tìm kiếm bot dịch vụ <span className="text-[#2563EB] font-bold">@MYTSMARTHOME_BOT</span> trên Telegram hoặc nhấn nút mở trực tiếp.</p>
                               </div>
                             </div>
 
@@ -1006,8 +1080,8 @@ export default function MainLayout() {
                             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex gap-3.5">
                               <div className="w-7 h-7 rounded-full bg-blue-50 text-[#2563EB] border border-blue-100 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">3</div>
                               <div>
-                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Gửi lệnh /start</h6>
-                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Bấm nút "Start" hoặc gửi lệnh <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono text-[10px]">/start</code> để bot kích hoạt dịch vụ.</p>
+                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Kích hoạt lệnh liên kết</h6>
+                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Gửi tin nhắn kích hoạt theo cú pháp: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono text-[10px]">/link TSM-XXXXXX</code> hoặc bấm Start.</p>
                               </div>
                             </div>
 
@@ -1015,8 +1089,8 @@ export default function MainLayout() {
                             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex gap-3.5">
                               <div className="w-7 h-7 rounded-full bg-blue-50 text-[#2563EB] border border-blue-100 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">4</div>
                               <div>
-                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Nhập mã xác thực</h6>
-                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Lấy Chat ID từ hệ thống Telegram của bạn (ví dụ qua bot @userinfobot) rồi điền vào form.</p>
+                                <h6 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-1">Hoàn tất kết nối</h6>
+                                <p className="text-slate-500 text-[11px] font-medium leading-relaxed">Hệ thống sẽ đồng bộ thông tin ngay khi nhận được lệnh và hiển thị trạng thái kết nối thành công.</p>
                               </div>
                             </div>
                           </div>

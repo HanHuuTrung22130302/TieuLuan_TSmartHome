@@ -17,3 +17,21 @@ export const updateUserProfile = async (profileData) => {
     throw error;
   }
 };
+
+export const generateTelegramCode = async () => {
+  try {
+    const response = await axiosClient.post('/users/profile/telegram/code');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const disconnectTelegram = async () => {
+  try {
+    const response = await axiosClient.delete('/users/profile/telegram');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};

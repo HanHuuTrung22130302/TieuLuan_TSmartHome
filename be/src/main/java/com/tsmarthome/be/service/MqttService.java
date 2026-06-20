@@ -60,6 +60,7 @@ public class MqttService implements MqttCallbackExtended {
     private final TelegramService telegramService;
 
     private final Map<String, Device> deviceCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastNotificationTimes = new ConcurrentHashMap<>();
     private final Object mqttLock = new Object();
 
     private void subscribeTopics() throws MqttException {
@@ -305,23 +306,69 @@ public class MqttService implements MqttCallbackExtended {
             String status = null;
             String value = null;
 
-            if (data.containsKey("status")) {
-                status = String.valueOf(data.get("status"));
-                String lower = status.toLowerCase();
-                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện") || lower.contains("cháy") || lower.contains("khói") || lower.contains("rò rỉ") || lower.contains("gas")
-                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect") || lower.contains("smoke") || lower.contains("fire") || lower.contains("leak")
-                        || lower.contains("high") || lower.contains("low") || lower.contains("abnormal") || lower.contains("error")) {
-                    isAlert = true;
+            if ("security".equals(type)) {
+                boolean isPersonAlert = false;
+                if (data.containsKey("personCount")) {
+                    try {
+                        int count = ((Number) data.get("personCount")).intValue();
+                        if (count > 0) {
+                            isPersonAlert = true;
+                        }
+                    } catch (Exception e) {}
                 }
-            }
+                
+                if (!isPersonAlert && data.containsKey("status")) {
+                    String lowerStatus = String.valueOf(data.get("status")).toLowerCase();
+                    if ((lowerStatus.contains("phát hiện") || lowerStatus.contains("detect")) 
+                            && !lowerStatus.contains("không") && !lowerStatus.contains("no")) {
+                        isPersonAlert = true;
+                    }
+                }
 
-            if (data.containsKey("value")) {
-                value = String.valueOf(data.get("value"));
-                String lower = value.toLowerCase();
-                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện") || lower.contains("cháy") || lower.contains("khói") || lower.contains("rò rỉ") || lower.contains("gas")
-                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect") || lower.contains("smoke") || lower.contains("fire") || lower.contains("leak")
-                        || lower.contains("high") || lower.contains("low") || lower.contains("abnormal") || lower.contains("error")) {
-                    isAlert = true;
+                if (!isPersonAlert && data.containsKey("value")) {
+                    String lowerValue = String.valueOf(data.get("value")).toLowerCase();
+                    if ((lowerValue.contains("phát hiện") || lowerValue.contains("detect")) 
+                            && !lowerValue.contains("không") && !lowerValue.contains("no")) {
+                        isPersonAlert = true;
+                    }
+                }
+
+                if (!isPersonAlert) {
+                    return; // Do NOT trigger notification for security/camera if no person is detected
+                }
+
+                status = data.containsKey("status") ? String.valueOf(data.get("status")) : "Phát hiện";
+                value = data.containsKey("value") ? String.valueOf(data.get("value")) : "Phát hiện người";
+                isAlert = true;
+
+                // Rate limit check: 1 minute (60,000 ms)
+                long now = System.currentTimeMillis();
+                String rateLimitKey = device.getId().toString();
+                Long lastTime = lastNotificationTimes.get(rateLimitKey);
+                if (lastTime != null && (now - lastTime) < 60000) {
+                    log.info("Bỏ qua gửi thông báo Telegram cho thiết bị {} do giới hạn 1 phút", device.getName());
+                    return;
+                }
+                lastNotificationTimes.put(rateLimitKey, now);
+            } else {
+                if (data.containsKey("status")) {
+                    status = String.valueOf(data.get("status"));
+                    String lower = status.toLowerCase();
+                    if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện") || lower.contains("cháy") || lower.contains("khói") || lower.contains("rò rỉ") || lower.contains("gas")
+                            || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect") || lower.contains("smoke") || lower.contains("fire") || lower.contains("leak")
+                            || lower.contains("high") || lower.contains("low") || lower.contains("abnormal") || lower.contains("error")) {
+                        isAlert = true;
+                    }
+                }
+
+                if (data.containsKey("value")) {
+                    value = String.valueOf(data.get("value"));
+                    String lower = value.toLowerCase();
+                    if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện") || lower.contains("cháy") || lower.contains("khói") || lower.contains("rò rỉ") || lower.contains("gas")
+                            || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect") || lower.contains("smoke") || lower.contains("fire") || lower.contains("leak")
+                            || lower.contains("high") || lower.contains("low") || lower.contains("abnormal") || lower.contains("error")) {
+                        isAlert = true;
+                    }
                 }
             }
 

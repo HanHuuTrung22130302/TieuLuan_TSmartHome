@@ -32,3 +32,28 @@ SET phone_number = EXCLUDED.phone_number,
     telegram_chat_id = EXCLUDED.telegram_chat_id,
     updated_at = NOW();
 
+-- 4. Tạo bảng camera_captures lưu trữ hình ảnh cảnh báo khi phát hiện người
+CREATE TABLE IF NOT EXISTS camera_captures (
+    id UUID PRIMARY KEY,
+    device_id UUID NOT NULL,
+    home_id UUID NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_camera_captures_device FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+    CONSTRAINT fk_camera_captures_home FOREIGN KEY (home_id) REFERENCES homes(id) ON DELETE CASCADE
+);
+
+-- 5. Cấu hình bảng cho tính năng liên kết Telegram tự động
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100);
+
+CREATE TABLE IF NOT EXISTS telegram_link_codes (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    is_used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_telegram_link_codes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+
