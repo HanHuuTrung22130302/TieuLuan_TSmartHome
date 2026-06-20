@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Camera, Activity, Radar, Video, AlertTriangle, 
-  Flame, Wifi, Maximize, CheckCircle2, MapPin, RefreshCw, X
+  Flame, Wifi, Maximize, CheckCircle2, MapPin, RefreshCw, X, ChevronDown, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { getSecuritySidebar } from '../../services/api/security';
+import { getSecuritySidebar, getCameraCaptures } from '../../services/api/security';
 import wsService from '../../services/api/wsService';
 
 export default function Security() {
@@ -17,6 +17,41 @@ export default function Security() {
 
   const [selectedSensor, setSelectedSensor] = useState(null);
   const [sensorLogs, setSensorLogs] = useState({});
+
+  const [rightPanelMode, setRightPanelMode] = useState('sensors'); // 'sensors' or 'captures'
+  const [captures, setCaptures] = useState([]);
+  const [selectedCapture, setSelectedCapture] = useState(null);
+  const [capturesFilter, setCapturesFilter] = useState('all'); // 'all', 'today', '7d', '30d'
+  const [capturesPage, setCapturesPage] = useState(0);
+  const [capturesTotalPages, setCapturesTotalPages] = useState(1);
+  const [capturesSize, setCapturesSize] = useState(5);
+
+  const capturesFilterRef = useRef(capturesFilter);
+  const capturesSizeRef = useRef(capturesSize);
+
+  useEffect(() => {
+    capturesFilterRef.current = capturesFilter;
+  }, [capturesFilter]);
+
+  useEffect(() => {
+    capturesSizeRef.current = capturesSize;
+  }, [capturesSize]);
+
+  const fetchCaptures = async (filterVal = capturesFilter, pageVal = capturesPage, sizeVal = capturesSize) => {
+    try {
+      const activeHomeId = localStorage.getItem('activeHomeId') || sessionStorage.getItem('activeHomeId');
+      if (activeHomeId) {
+        const response = await getCameraCaptures(activeHomeId, filterVal, pageVal, sizeVal);
+        if (response && response.code === 1000) {
+          setCaptures(response.data);
+          setCapturesPage(response.page);
+          setCapturesTotalPages(response.totalPages);
+        }
+      }
+    } catch (error) {
+      console.error("Lỗi khi lấy ảnh chụp cảnh báo:", error);
+    }
+  };
 
   // Lấy dữ liệu API qua Service
   useEffect(() => {
@@ -38,6 +73,7 @@ export default function Security() {
       }
     };
     fetchSecuritySidebar();
+    fetchCaptures('all', 0);
   }, []);
 
   // Lắng nghe WebSocket để nhấp nháy cảm biến và lưu log raw
@@ -72,13 +108,18 @@ export default function Security() {
       }
 
       // Bật cờ flashing cho thiết bị đó để UI nhấp nháy
-      if (status === 'Nguy hiểm' || status === 'Cảnh báo') {
+      if (status === 'Nguy hiểm' || status === 'Cảnh báo' || status === 'Phát hiện') {
         setFlashingDevices(prev => ({ ...prev, [deviceId]: true }));
         
         // Tắt nhấp nháy sau 3 giây để đưa UI về bình thường
         setTimeout(() => {
           setFlashingDevices(prev => ({ ...prev, [deviceId]: false }));
         }, 3000);
+
+        // Tự động reload lại danh sách ảnh chụp cảnh báo sau khi nhận tin nhắn websocket cảnh báo
+        setTimeout(() => {
+          fetchCaptures(capturesFilterRef.current, 0, capturesSizeRef.current);
+        }, 2500);
       }
     });
 
@@ -336,65 +377,221 @@ export default function Security() {
         {/* ================= CỘT PHẢI: DANH SÁCH CẢM BIẾN ================= */}
         <div className="w-full xl:w-96 flex flex-col shrink-0 h-full">
           <div className="flex-1 bg-[#121212] border border-white/5 rounded-[2.5rem] p-5 shadow-2xl flex flex-col relative overflow-hidden">
-            <h3 className="font-bold mb-4 flex items-center gap-2 text-sm sticky top-0 bg-[#121212] z-20 pb-2">
-              <Activity className="w-4 h-4 text-amber-400" /> Trạng thái Cảm biến
-            </h3>
+            {/* THAY TIÊU ĐỀ BẰNG OPTION CHỌN CHẾ ĐỘ */}
+            <div className="flex items-center justify-between mb-5 sticky top-0 bg-[#121212] z-20 pb-2 border-b border-white/5">
+              <div className="relative flex-1">
+                <select
+                  value={rightPanelMode}
+                  onChange={(e) => setRightPanelMode(e.target.value)}
+                  className="appearance-none w-full bg-black/60 border border-white/10 text-slate-300 text-sm font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors"
+                >
+                  <option value="sensors">Trạng thái Cảm biến</option>
+                  <option value="captures">Phát hiện chuyển động</option>
+                </select>
+                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                  <ChevronDown className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
             
-            {/* THÊM px-2 và -mx-2 ĐỂ FIX LỖI OVERFLOW KHI CARD PHÌNH TO */}
-            <div className="flex flex-col gap-3 overflow-y-auto px-2 pb-4 -mx-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
-              {sensors.map(sensor => {
-                const Icon = getSensorIcon(sensor.deviceType);
-                const isFlashing = flashingDevices[sensor.name];
-                const statusStr = sensor.lastStatus || 'An toàn';
-                const colorClasses = getSensorColor(statusStr, sensor.deviceType);
-                const hasWarning = statusStr === 'Nguy hiểm' || statusStr === 'Cảnh báo';
+            {rightPanelMode === 'sensors' ? (
+              /* THÊM px-2 và -mx-2 ĐỂ FIX LỖI OVERFLOW KHI CARD PHÌNH TO */
+              <div className="flex flex-col gap-3 overflow-y-auto px-2 pb-4 -mx-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+                {sensors.map(sensor => {
+                  const Icon = getSensorIcon(sensor.deviceType);
+                  const isFlashing = flashingDevices[sensor.name];
+                  const statusStr = sensor.lastStatus || 'An toàn';
+                  const colorClasses = getSensorColor(statusStr, sensor.deviceType);
+                  const hasWarning = statusStr === 'Nguy hiểm' || statusStr === 'Cảnh báo';
 
-                return (
-                  <div 
-                    key={sensor.id}
-                    onClick={() => setSelectedSensor(sensor)}
-                    className={`border rounded-2xl p-4 transition-all duration-300 cursor-pointer ${
-                      isFlashing 
-                        ? 'border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)] bg-rose-500/10 scale-[1.02] z-10' 
-                        : 'border-white/5 bg-black/20 hover:bg-white/[0.04] hover:border-white/10 active:scale-[0.98]'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${isFlashing ? 'bg-rose-500 text-white' : colorClasses.replace('text-', 'text-').split(' ')[0] + ' ' + colorClasses.split(' ')[1]}`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start mb-1">
-                          <h4 className="text-sm font-bold text-white pr-2" title={sensor.label || sensor.name}>
-                            {sensor.label || sensor.name}
-                          </h4>
-                          {hasWarning ? (
-                            <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${isFlashing ? 'text-rose-400 animate-ping' : 'text-amber-400'}`} />
-                          ) : (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  return (
+                    <div 
+                      key={sensor.id}
+                      onClick={() => setSelectedSensor(sensor)}
+                      className={`border rounded-2xl p-4 transition-all duration-300 cursor-pointer ${
+                        isFlashing 
+                          ? 'border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)] bg-rose-500/10 scale-[1.02] z-10' 
+                          : 'border-white/5 bg-black/20 hover:bg-white/[0.04] hover:border-white/10 active:scale-[0.98]'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${isFlashing ? 'bg-rose-500 text-white' : colorClasses.replace('text-', 'text-').split(' ')[0] + ' ' + colorClasses.split(' ')[1]}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-1">
+                            <h4 className="text-sm font-bold text-white pr-2" title={sensor.label || sensor.name}>
+                              {sensor.label || sensor.name}
+                            </h4>
+                            {hasWarning ? (
+                              <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${isFlashing ? 'text-rose-400 animate-ping' : 'text-amber-400'}`} />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <MapPin className="w-2.5 h-2.5" /> {sensor.roomName}
+                          </p>
+                          
+                          {(sensor.lastValue || hasWarning) && (
+                            <div className={`text-[10px] font-medium px-2 py-1 rounded-md inline-block ${
+                              hasWarning ? 'bg-rose-500/20 text-rose-300' : 'bg-white/5 text-slate-300'
+                            }`}>
+                              {sensor.lastValue || statusStr}
+                            </div>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-                          <MapPin className="w-2.5 h-2.5" /> {sensor.roomName}
-                        </p>
-                        
-                        {(sensor.lastValue || hasWarning) && (
-                          <div className={`text-[10px] font-medium px-2 py-1 rounded-md inline-block ${
-                            hasWarning ? 'bg-rose-500/20 text-rose-300' : 'bg-white/5 text-slate-300'
-                          }`}>
-                            {sensor.lastValue || statusStr}
+                      </div>
+                    </div>
+                  );
+                })}
+                {sensors.length === 0 && (
+                  <div className="text-center text-slate-500 text-sm py-4">Không có cảm biến an ninh</div>
+                )}
+              </div>
+            ) : (
+              /* HIỂN THỊ HÌNH ẢNH PHÁT HIỆN CHUYỂN ĐỘNG / CAMERA CAPTURES */
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="flex justify-between items-center mb-3 shrink-0">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">
+                    Ảnh chụp camera cảnh báo
+                  </span>
+                  <button 
+                    onClick={() => fetchCaptures(capturesFilter, 0, capturesSize)}
+                    className="text-[10px] font-extrabold text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Làm mới
+                  </button>
+                </div>
+
+                {/* Thanh lọc thời gian bằng Dropdown Select */}
+                <div className="relative mb-3.5 shrink-0">
+                  <select
+                    value={capturesFilter}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCapturesFilter(val);
+                      fetchCaptures(val, 0, capturesSize);
+                    }}
+                    className="appearance-none w-full bg-black/60 border border-white/10 text-slate-300 text-xs font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors"
+                  >
+                    <option value="all">Thời gian: Tất cả</option>
+                    <option value="today">Thời gian: Hôm nay</option>
+                    <option value="7d">Thời gian: 7 ngày qua</option>
+                    <option value="30d">Thời gian: 30 ngày qua</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto px-1 space-y-4 pb-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+                  {captures.map((cap) => {
+                    const device = securityDevices.find(d => d.name === cap.deviceName);
+                    const roomName = device ? device.roomName : "Cửa vào";
+                    
+                    return (
+                      <div 
+                        key={cap.id}
+                        onClick={() => setSelectedCapture(cap.imageUrl)}
+                        className="group relative border border-white/5 bg-black/40 rounded-2xl p-3 flex flex-col gap-2.5 hover:border-blue-500/30 transition-all duration-300 active:scale-[0.98] cursor-pointer"
+                      >
+                        <div className="w-full h-40 rounded-xl overflow-hidden relative border border-white/5 bg-slate-950">
+                          <img 
+                            src={cap.imageUrl} 
+                            alt="Camera warning capture" 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute top-2.5 left-2.5 bg-rose-500/95 text-white font-extrabold text-[10px] uppercase tracking-wider px-2 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span> Phát hiện người
                           </div>
-                        )}
+                        </div>
+                        
+                        <div className="flex justify-between items-center px-0.5">
+                          <div className="min-w-0 flex-1 pr-2">
+                            <h4 className="text-sm font-extrabold text-white truncate">
+                              {cap.deviceLabel || cap.deviceName}
+                            </h4>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1 flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-500" /> {roomName}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-mono font-black text-rose-400 leading-none">
+                              {new Date(cap.createdAt).toLocaleTimeString('vi-VN')}
+                            </p>
+                            <p className="text-xs text-slate-300 font-black mt-1 leading-none">
+                              {new Date(cap.createdAt).toLocaleDateString('vi-VN')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {captures.length === 0 && (
+                    <div className="text-center text-slate-500 text-xs py-12 font-medium">
+                      Chưa ghi nhận hình ảnh cảnh báo nào.
+                    </div>
+                  )}
+                </div>
+
+                {/* Nút phân trang */}
+                {captures.length > 0 && (
+                  <div className="flex flex-col gap-2 shrink-0 mt-3 border-t border-white/5 pt-3">
+                    <div className="flex items-center justify-between">
+                      {/* Chọn số lượng hiển thị */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">Hiển thị:</span>
+                        <div className="relative">
+                          <select
+                            value={capturesSize}
+                            onChange={(e) => {
+                              const newSize = parseInt(e.target.value, 10);
+                              setCapturesSize(newSize);
+                              fetchCaptures(capturesFilter, 0, newSize);
+                            }}
+                            className="appearance-none bg-black/60 border border-white/10 text-slate-300 text-[10px] font-extrabold rounded-lg pl-2 pr-6 py-1 outline-none cursor-pointer focus:border-blue-500 transition-colors"
+                          >
+                            <option value={3}>3 ảnh</option>
+                            <option value={5}>5 ảnh</option>
+                            <option value={10}>10 ảnh</option>
+                            <option value={20}>20 ảnh</option>
+                          </select>
+                          <div className="absolute inset-y-0 right-1.5 flex items-center pointer-events-none text-slate-400">
+                            <ChevronDown className="w-2.5 h-2.5" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Các nút chuyển trang */}
+                      <div className="flex items-center gap-2 bg-black/40 border border-white/5 rounded-xl p-0.5">
+                        <button
+                          onClick={() => fetchCaptures(capturesFilter, Math.max(0, capturesPage - 1), capturesSize)}
+                          disabled={capturesPage === 0}
+                          className="p-1 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        
+                        <span className="text-[10px] font-extrabold font-mono text-slate-400 px-1">
+                          {capturesPage + 1} / {capturesTotalPages || 1}
+                        </span>
+                        
+                        <button
+                          onClick={() => fetchCaptures(capturesFilter, Math.min(capturesTotalPages - 1, capturesPage + 1), capturesSize)}
+                          disabled={capturesPage >= capturesTotalPages - 1}
+                          className="p-1 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   </div>
-                );
-              })}
-              {sensors.length === 0 && (
-                <div className="text-center text-slate-500 text-sm py-4">Không có cảm biến an ninh</div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -502,7 +699,31 @@ export default function Security() {
             </div>
           </div>
         );
-      })()}
+      })()
+      }
+
+      {/* Lightbox Modal để xem ảnh phóng to */}
+      {selectedCapture && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            onClick={() => setSelectedCapture(null)} 
+            className="absolute inset-0 bg-black/90 backdrop-blur-sm transition-opacity"
+          ></div>
+          <div className="relative max-w-[90vw] max-h-[85vh] bg-[#121212] border border-white/10 rounded-[2.5rem] p-3 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setSelectedCapture(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl bg-black/60 hover:bg-black/80 text-white transition-colors cursor-pointer border border-white/10 z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img 
+              src={selectedCapture} 
+              alt="Full screen warning capture" 
+              className="max-w-full max-h-[80vh] object-contain rounded-2xl animate-in zoom-in-95 duration-200"
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );

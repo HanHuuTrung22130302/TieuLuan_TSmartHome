@@ -37,6 +37,9 @@ public class UserProfile {
     @Column(name = "telegram_chat_id", length = 100)
     private String telegramChatId;
 
+    @Column(name = "telegram_username", length = 100)
+    private String telegramUsername;
+
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;

@@ -41,6 +41,7 @@ public class SecurityConfig {
 
                         // Auth public
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/camera/upload").permitAll()
 
                         // WebSocket handshake public
                         .requestMatchers("/ws-smarthome/**").permitAll()
