@@ -131,7 +131,6 @@ public class MqttService implements MqttCallbackExtended {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
-        // LUÔN LUÔN BỌC TRY-CATCH ở đây để tránh sập service khi nhận JSON lỗi
         try {
             String payload = new String(message.getPayload());
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
