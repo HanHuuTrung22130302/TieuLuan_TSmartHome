@@ -157,6 +157,6 @@ Các thiết bị ESP32 thu thập dữ liệu từ cảm biến và giao tiếp
 
 Đề tài: **Phát triển ứng dụng Web TSmartHome kết hợp sử dụng ESP32 để xây dựng hệ thống IoT nhà thông minh**
 
-Sinh viên thực hiện: ...
+Sinh viên thực hiện: Hán Hữu Trung
 
-Trường: ...
+MSSV: 22130302
