@@ -18,4 +18,6 @@ public class UserProfileResponse {
     private String region;
     private String avatarUrl;
     private String telegramChatId;
+    private java.time.LocalDateTime createdAt;
 }
+

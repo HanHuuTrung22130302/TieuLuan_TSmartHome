@@ -300,7 +300,7 @@ public class MqttService implements MqttCallbackExtended {
         if (device == null || device.getDeviceType() == null) return;
 
         String type = device.getDeviceType();
-        if ("security".equals(type) || "radar".equals(type)) {
+        if ("security".equals(type) || "radar".equals(type) || "environment".equals(type) || "safety".equals(type)) {
             boolean isAlert = false;
             String status = null;
             String value = null;
@@ -308,8 +308,9 @@ public class MqttService implements MqttCallbackExtended {
             if (data.containsKey("status")) {
                 status = String.valueOf(data.get("status"));
                 String lower = status.toLowerCase();
-                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện")
-                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect")) {
+                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện") || lower.contains("cháy") || lower.contains("khói") || lower.contains("rò rỉ") || lower.contains("gas")
+                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect") || lower.contains("smoke") || lower.contains("fire") || lower.contains("leak")
+                        || lower.contains("high") || lower.contains("low") || lower.contains("abnormal") || lower.contains("error")) {
                     isAlert = true;
                 }
             }
@@ -317,8 +318,9 @@ public class MqttService implements MqttCallbackExtended {
             if (data.containsKey("value")) {
                 value = String.valueOf(data.get("value"));
                 String lower = value.toLowerCase();
-                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện")
-                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect")) {
+                if (lower.contains("cảnh báo") || lower.contains("nguy hiểm") || lower.contains("phát hiện") || lower.contains("cháy") || lower.contains("khói") || lower.contains("rò rỉ") || lower.contains("gas")
+                        || lower.contains("warning") || lower.contains("danger") || lower.contains("alert") || lower.contains("detect") || lower.contains("smoke") || lower.contains("fire") || lower.contains("leak")
+                        || lower.contains("high") || lower.contains("low") || lower.contains("abnormal") || lower.contains("error")) {
                     isAlert = true;
                 }
             }
@@ -331,6 +333,57 @@ public class MqttService implements MqttCallbackExtended {
                 }
             }
 
+            if ("environment".equals(type)) {
+                if (data.containsKey("temperature")) {
+                    double temp = ((Number) data.get("temperature")).doubleValue();
+                    if (temp > 40.0 || temp < 10.0) {
+                        isAlert = true;
+                        value = "Nhiệt độ bất thường: " + temp + " °C";
+                        if (status == null || status.isBlank()) {
+                            status = temp > 40.0 ? "Nhiệt độ cao" : "Nhiệt độ thấp";
+                        }
+                    }
+                }
+                if (data.containsKey("humidity")) {
+                    double hum = ((Number) data.get("humidity")).doubleValue();
+                    if (hum > 85.0 || hum < 20.0) {
+                        isAlert = true;
+                        if (value == null) {
+                            value = "Độ ẩm bất thường: " + hum + " %";
+                        }
+                        if (status == null || status.isBlank()) {
+                            status = "Cảnh báo độ ẩm";
+                        }
+                    }
+                }
+                if (data.containsKey("co2")) {
+                    double co2 = ((Number) data.get("co2")).doubleValue();
+                    if (co2 > 1000.0) {
+                        isAlert = true;
+                        if (value == null) {
+                            value = "Nồng độ CO2 cao: " + co2 + " ppm";
+                        }
+                        if (status == null || status.isBlank()) {
+                            status = "Cảnh báo chất lượng không khí";
+                        }
+                    }
+                }
+            }
+
+            if ("safety".equals(type)) {
+                if (data.containsKey("gas") || data.containsKey("smoke")) {
+                    double gasVal = data.containsKey("gas") ? ((Number) data.get("gas")).doubleValue() : 0;
+                    double smokeVal = data.containsKey("smoke") ? ((Number) data.get("smoke")).doubleValue() : 0;
+                    if (gasVal > 300.0 || smokeVal > 300.0) {
+                        isAlert = true;
+                        value = "Gas: " + gasVal + " ppm, Khói: " + smokeVal + " ppm";
+                        if (status == null || status.isBlank()) {
+                            status = "Cảnh báo an toàn (Rò rỉ khí/Khói)";
+                        }
+                    }
+                }
+            }
+
             if (isAlert) {
                 String homeName = (device.getRoom() != null && device.getRoom().getHome() != null)
                         ? device.getRoom().getHome().getName() : "Không xác định";
@@ -338,16 +391,25 @@ public class MqttService implements MqttCallbackExtended {
                 String deviceLabel = device.getLabel() != null ? device.getLabel() : device.getName();
 
                 String alertStatus = status != null ? status : "Cảnh báo";
-                String alertValue = value != null ? value : "Phát hiện sự kiện an ninh";
+                String alertValue = value != null ? value : "Phát hiện sự kiện cảnh báo";
+
+                String deviceTypeVi = device.getDeviceType();
+                if ("security".equals(deviceTypeVi)) deviceTypeVi = "An ninh";
+                else if ("radar".equals(deviceTypeVi)) deviceTypeVi = "Radar cảm biến";
+                else if ("environment".equals(deviceTypeVi)) deviceTypeVi = "Môi trường";
+                else if ("safety".equals(deviceTypeVi)) deviceTypeVi = "An toàn";
+
+                String timeStr = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
 
                 String message = String.format(
-                        "⚠️ <b>CẢNH BÁO AN NINH TSMARTHOME</b> ⚠️\n\n" +
-                        "🏡 <b>Nhà:</b> %s\n" +
-                        "🚪 <b>Phòng:</b> %s\n" +
-                        "🔌 <b>Thiết bị:</b> %s (%s)\n" +
-                        "📝 <b>Trạng thái:</b> %s\n" +
-                        "📊 <b>Dữ liệu:</b> %s",
-                        homeName, roomName, deviceLabel, device.getDeviceType(), alertStatus, alertValue
+                        "<b>THÔNG BÁO KHẨN CẤP - TSMARTHOME</b>\n" +
+                        "----------------------------------\n" +
+                        "• <b>Thiết bị:</b> %s (Nhóm: %s)\n" +
+                        "• <b>Vị trí:</b> Phòng %s - %s\n" +
+                        "• <b>Trạng thái:</b> %s\n" +
+                        "• <b>Chi tiết:</b> %s\n" +
+                        "• <b>Thời gian:</b> %s",
+                        deviceLabel, deviceTypeVi, roomName, homeName, alertStatus, alertValue, timeStr
                 );
 
                 UUID homeId = (device.getRoom() != null && device.getRoom().getHome() != null)

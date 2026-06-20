@@ -40,6 +40,7 @@ public class UserProfileController {
                     .region(profile != null ? (profile.getRegion() != null ? profile.getRegion() : DEFAULT_REGION) : DEFAULT_REGION)
                     .avatarUrl(profile != null ? (profile.getAvatarUrl() != null ? profile.getAvatarUrl() : DEFAULT_AVATAR) : DEFAULT_AVATAR)
                     .telegramChatId(profile != null ? profile.getTelegramChatId() : null)
+                    .createdAt(user.getCreatedAt())
                     .build();
 
             return ResponseEntity.ok(new ApiResponse<>(1000, "Lấy thông tin profile thành công", response));
@@ -96,6 +97,7 @@ public class UserProfileController {
                     .region(profile.getRegion() != null ? profile.getRegion() : DEFAULT_REGION)
                     .avatarUrl(profile.getAvatarUrl() != null ? profile.getAvatarUrl() : DEFAULT_AVATAR)
                     .telegramChatId(profile.getTelegramChatId())
+                    .createdAt(user.getCreatedAt())
                     .build();
 
             return ResponseEntity.ok(new ApiResponse<>(1000, "Cập nhật profile thành công", response));

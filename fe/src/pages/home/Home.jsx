@@ -22,6 +22,25 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(1);
   const cameraUrl = "/camera-s3/stream";
 
+  const [userProfile, setUserProfile] = useState({
+    fullName: localStorage.getItem('fullName') || 'Trung Hán Hữu',
+    avatarUrl: localStorage.getItem('avatarUrl') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Trung'
+  });
+
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      setUserProfile({
+        fullName: localStorage.getItem('fullName') || 'Trung Hán Hữu',
+        avatarUrl: localStorage.getItem('avatarUrl') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Trung'
+      });
+    };
+    window.addEventListener('tsmarthome_profile_updated', handleProfileUpdate);
+    handleProfileUpdate();
+    return () => {
+      window.removeEventListener('tsmarthome_profile_updated', handleProfileUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     setCurrentDate(new Date().toLocaleDateString('vi-VN', dateOptions));
@@ -101,11 +120,14 @@ export default function Home() {
           <button className="p-3 bg-white text-black rounded-full hover:bg-slate-200 transition-colors shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.2)]">
             <Mic className="w-4 h-4" />
           </button>
-          <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full p-1 pr-4 shrink-0 cursor-pointer hover:bg-white/10 transition-colors">
-            <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden border border-slate-600">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Trung" alt="avatar" />
+          <div 
+            onClick={() => window.dispatchEvent(new CustomEvent('tsmarthome_open_profile'))}
+            className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full p-1 pr-4 shrink-0 cursor-pointer hover:bg-white/10 transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden border border-slate-600 flex items-center justify-center">
+              <img src={userProfile.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
             </div>
-            <span className="text-sm font-medium">Trung Hán Hữu</span>
+            <span className="text-sm font-medium">{userProfile.fullName}</span>
             <ChevronDown className="w-4 h-4 text-slate-400" />
           </div>
         </div>
