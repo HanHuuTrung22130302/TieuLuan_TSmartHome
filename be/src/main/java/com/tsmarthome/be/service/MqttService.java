@@ -39,13 +39,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class MqttService implements MqttCallbackExtended {
 
-    @Value("${mqtt.broker.url}")
-    private String brokerUrl;
-
-    @Value("${mqtt.client.id}")
-    private String clientId;
-
-    private MqttClient mqttClient;
+    private final MqttClient mqttClient;
+    private final MqttConnectOptions mqttConnectOptions;
 
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -87,15 +82,9 @@ public class MqttService implements MqttCallbackExtended {
     @PostConstruct
     public void connect() {
         try {
-            mqttClient = new MqttClient(brokerUrl, clientId, new MemoryPersistence());
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setAutomaticReconnect(true);
-            options.setCleanSession(true);
-            options.setConnectionTimeout(1000);
-
             mqttClient.setCallback(this);
-            mqttClient.connect(options);
-            log.info("Đã kết nối thành công tới MQTT Broker: {}", brokerUrl);
+            mqttClient.connect(mqttConnectOptions);
+            log.info("Đã kết nối thành công tới MQTT Broker!");
 
         } catch (MqttException e) {
             log.error("Lỗi kết nối MQTT: {}", e.getMessage());

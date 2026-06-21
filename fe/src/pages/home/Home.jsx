@@ -249,7 +249,7 @@ export default function Home() {
             <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
               <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_red]"></div>
-                <span className="text-[10px] font-bold tracking-widest uppercase text-white">LIVE REC</span>
+                <span className="text-[10px] font-bold tracking-widest uppercase text-white">LIVE</span>
               </div>
               <Link to="/security" className="bg-black/50 backdrop-blur-md p-2 rounded-xl border border-white/10 hover:bg-white/20 transition-colors text-white z-10">
                 <Maximize className="w-4 h-4" />
