@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, Html, OrbitControls, Environment, ContactShadows } from '@react-three/drei';
-import { 
-  Thermometer, Camera, DoorClosed, Activity, Flame, 
+import {
+  Thermometer, Camera, DoorClosed, Activity, Flame,
   Lightbulb, Shield, Wind, Map, Maximize, ZoomIn, ZoomOut,
-  Mic, AppWindow, Tv, Sun, Bell, Blinds, History, Clock, 
+  Mic, AppWindow, Tv, Sun, Bell, Blinds, History, Clock,
   MousePointer2, Droplets, Radar, Video, Wifi, RefreshCw, Power, AlertTriangle, CheckCircle2, Cpu
 } from 'lucide-react';
 
@@ -21,22 +21,22 @@ const RADAR_BLOCKS_3D = [
   { id: 5, position: [-3.2, 0.02, 4.3], args: [1.2, 0.9] },
   { id: 4, position: [-2.0, 0.02, 4.3], args: [1.2, 0.9] },
   { id: 3, position: [-0.8, 0.02, 4.3], args: [1.2, 0.9] },
-  { id: 2, position: [0.4, 0.02, 4.3],  args: [1.2, 0.9] },
-  { id: 1, position: [1.6, 0.02, 4.3],  args: [1.2, 0.9] },
+  { id: 2, position: [0.4, 0.02, 4.3], args: [1.2, 0.9] },
+  { id: 1, position: [1.6, 0.02, 4.3], args: [1.2, 0.9] },
 
   // Hàng 2 (livingroom_sensor_radar2) -> rowOffset = 5 (Trục xoay quanh PIR Khách/Bếp Z: 3.18)
   { id: 10, position: [-3.2, 0.02, 3.18], args: [1.2, 1.1] },
-  { id: 9, position: [-2.0, 0.02, 3.18],  args: [1.2, 1.1] },
-  { id: 8, position: [-0.8, 0.02, 3.18],  args: [1.2, 1.1] }, // Trùng trục X của MQ-135 và sát PIR
-  { id: 7, position: [0.4, 0.02, 3.18],   args: [1.2, 1.1] },
-  { id: 6, position: [1.6, 0.02, 3.18],   args: [1.2, 1.1] },
+  { id: 9, position: [-2.0, 0.02, 3.18], args: [1.2, 1.1] },
+  { id: 8, position: [-0.8, 0.02, 3.18], args: [1.2, 1.1] }, // Trùng trục X của MQ-135 và sát PIR
+  { id: 7, position: [0.4, 0.02, 3.18], args: [1.2, 1.1] },
+  { id: 6, position: [1.6, 0.02, 3.18], args: [1.2, 1.1] },
 
   // Hàng 3 (livingroom_sensor_radar3) -> rowOffset = 10 (Trục tiến về phía bếp MQ-135 Z: 1.14)
   { id: 15, position: [-3.2, 0.02, 1.5], args: [1.2, 1.4] },
   { id: 14, position: [-2.0, 0.02, 1.5], args: [1.2, 1.4] },
   { id: 13, position: [-0.8, 0.02, 1.5], args: [1.2, 1.4] }, // Đè vị trí chất lượng không khí bếp
-  { id: 12, position: [0.4, 0.02, 1.5],  args: [1.2, 1.4] },
-  { id: 11, position: [1.6, 0.02, 1.5],  args: [1.2, 1.4] },
+  { id: 12, position: [0.4, 0.02, 1.5], args: [1.2, 1.4] },
+  { id: 11, position: [1.6, 0.02, 1.5], args: [1.2, 1.4] },
 ];
 
 const HALLWAY_RADAR_BLOCKS_3D = [
@@ -84,7 +84,7 @@ export default function SmartHomeMap3D() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [mapDevices, setMapDevices] = useState([]);
   const [cameras, setCameras] = useState([]);
-  
+
   // State Panel điều khiển
   const [selectedSensor, setSelectedSensor] = useState(null);
   const [activeCameraId, setActiveCameraId] = useState(null);
@@ -92,8 +92,8 @@ export default function SmartHomeMap3D() {
   const [cameraKey, setCameraKey] = useState(Date.now());
 
   // State Dữ liệu Tab & Filter Lịch sử
-  const [timeFilter, setTimeFilter] = useState('1D'); 
-  const [dataFilter, setDataFilter] = useState('history'); 
+  const [timeFilter, setTimeFilter] = useState('1D');
+  const [dataFilter, setDataFilter] = useState('history');
   const [deviceHistory, setDeviceHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [deviceAlerts, setDeviceAlerts] = useState([]);
@@ -151,15 +151,15 @@ export default function SmartHomeMap3D() {
   useEffect(() => {
     const stompClient = wsService.connect((rawData) => {
       const { deviceId, status, value, distance } = rawData;
-      setMapDevices(prev => 
+      setMapDevices(prev =>
         prev.map(d => {
           if (d.name === deviceId) {
-            const updatedDevice = { 
-              ...d, 
+            const updatedDevice = {
+              ...d,
               state: rawData.state !== undefined ? rawData.state : d.state,
               status: status !== undefined ? status : d.status
             };
-            
+
             if (selectedSensor && selectedSensor.id === updatedDevice.id) {
               setSelectedSensor(updatedDevice);
             }
@@ -193,7 +193,7 @@ export default function SmartHomeMap3D() {
     setIsLoadingHistory(true);
     try {
       const queryParam = filterObj === '3D' ? '3d' : '';
-      const res = await getDeviceHistory(deviceId, queryParam); 
+      const res = await getDeviceHistory(deviceId, queryParam);
       if (res && res.code === 1000) setDeviceHistory(res.data);
     } catch { setDeviceHistory([]); } finally { setIsLoadingHistory(false); }
   };
@@ -202,7 +202,7 @@ export default function SmartHomeMap3D() {
     setIsLoadingAlerts(true);
     try {
       const queryParam = filterObj === '3D' ? '3d' : '';
-      const res = await getDeviceAlerts(deviceId, queryParam); 
+      const res = await getDeviceAlerts(deviceId, queryParam);
       if (res && res.code === 1000) setDeviceAlerts(res.data);
     } catch { setDeviceAlerts([]); } finally { setIsLoadingAlerts(false); }
   };
@@ -252,8 +252,8 @@ export default function SmartHomeMap3D() {
 
   const getTypeColor = (device) => {
     if (device.isFake) return 'bg-slate-800/40 text-slate-500 border-slate-700/50';
-    
-    switch(device.deviceType) {
+
+    switch (device.deviceType) {
       case 'environment': return 'bg-sky-500 shadow-sky-500/50 border-white/60';
       case 'security': return 'bg-rose-500 shadow-rose-500/50 border-white/60';
       case 'safety': return 'bg-amber-500 shadow-amber-500/50 border-white/60';
@@ -283,7 +283,7 @@ export default function SmartHomeMap3D() {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-slate-950">
-      
+
       {/* HUD THÔNG SỐ MÔI TRƯỜNG CHUNG */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex gap-4 pointer-events-auto">
         <div className="bg-slate-900/80 backdrop-blur-md border border-white/10 p-2.5 px-6 rounded-full flex items-center gap-3 shadow-2xl">
@@ -300,7 +300,7 @@ export default function SmartHomeMap3D() {
       <div className="absolute top-6 left-6 z-30 flex flex-col gap-4 pointer-events-auto">
         <div className="bg-slate-900/80 backdrop-blur-md border border-white/10 p-3 rounded-2xl flex items-center gap-3 shadow-2xl">
           <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]"></div>
-          <span className="text-white text-sm font-bold tracking-wide uppercase">Digital Twin Live 3D</span>
+          <span className="text-white text-sm font-bold tracking-wide uppercase">Digital Twin 3D</span>
         </div>
         <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl flex flex-col gap-1 w-44">
           {[{ id: 'all', label: 'Tất cả thiết bị' }, { id: 'security', label: 'An ninh' }, { id: 'environment', label: 'Môi trường' }, { id: 'appliance', label: 'Đồ điện / Rèm' }, { id: 'safety', label: 'PCCC' }, { id: 'radar', label: 'Radar' }].map(f => (
@@ -323,7 +323,7 @@ export default function SmartHomeMap3D() {
                 <button onClick={() => { setCameraError(false); setCameraKey(Date.now()); }} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg"><RefreshCw className="w-3 h-3 inline mr-1" /> Reload</button>
               </div>
             )}
-            <div className="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded-lg flex items-center gap-1.5 border border-white/10"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_red]"></div><span className="text-[10px] font-bold text-white tracking-widest uppercase">LIVE REC</span></div>
+            <div className="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded-lg flex items-center gap-1.5 border border-white/10"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_red]"></div><span className="text-[10px] font-bold text-white tracking-widest uppercase">LIVE</span></div>
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-8"><h3 className="text-sm font-bold text-white mb-0.5">{activeCameraMeta?.label || 'Camera'}</h3><p className="text-[10px] text-slate-400 font-mono"><Video className="w-3 h-3 inline mr-1" />{activeCameraMeta?.roomName || 'Hệ thống'}</p></div>
           </div>
         )}
@@ -339,7 +339,7 @@ export default function SmartHomeMap3D() {
             <h3 className="text-xl font-black text-white leading-tight mb-2 truncate px-4">{selectedSensor.label || selectedSensor.name}</h3>
             <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs uppercase tracking-tighter mb-8"><Map className="w-3.5 h-3.5 text-blue-500" /> {selectedSensor.roomName}</div>
             <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/10"><Clock className="w-8 h-8 text-amber-500 opacity-80" /></div>
-            <h3 className="text-4xl font-black text-white tracking-widest mb-3 opacity-20">COMING<br/>SOON</h3>
+            <h3 className="text-4xl font-black text-white tracking-widest mb-3 opacity-20">COMING<br />SOON</h3>
           </div>
         ) : (
           <>
@@ -418,7 +418,7 @@ export default function SmartHomeMap3D() {
           <Suspense fallback={<Html center><div className="text-white font-bold animate-pulse">Đang tải mô hình...</div></Html>}>
             <group scale={1.3} rotation={[0, Math.PI, 0]} position={[0, 0, 0]}>
               <HouseModel />
-              
+
               {/* LƯỚI 15 Ô QUÉT RADAR PHÒNG KHÁCH KHÔNG GIAN 3D */}
               {RADAR_BLOCKS_3D.map(block => {
                 const isActive = Object.values(radarTargets).includes(block.id);
@@ -447,21 +447,21 @@ export default function SmartHomeMap3D() {
                 const isSelected = selectedSensor?.id === sensor.id;
                 const hasWarning = sensor.status === 'Nguy hiểm' || sensor.status === 'Cảnh báo';
                 const colorClass = getTypeColor(sensor);
-                
+
                 return (
                   <Html key={sensor.id} position={[sensor.pos3dX, sensor.pos3dY || 1.2, sensor.pos3dZ]} center zIndexRange={[100, 0]}>
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); handleMarkerClick(sensor); }}
                       className={`relative group cursor-pointer transition-all duration-300 outline-none ${sensor.isFake ? 'opacity-50 grayscale hover:grayscale-0' : 'hover:scale-150'} ${isSelected ? 'scale-150 z-20' : ''}`}
                     >
                       {hasWarning && !sensor.isFake && (
                         <div className="absolute inset-0 rounded-full animate-ping opacity-60 bg-rose-500"></div>
                       )}
-                      
+
                       <div className={`relative flex items-center justify-center w-8 h-8 rounded-full text-white shadow-xl border-2 transition-all ${isSelected ? 'border-white ring-4 ring-white/30' : ''} ${hasWarning && !sensor.isFake ? 'bg-rose-600 border-white/60' : colorClass}`}>
                         <MarkerIcon className="w-4 h-4 drop-shadow-md" />
                       </div>
-                      
+
                       <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1 bg-slate-900/95 backdrop-blur text-white text-xs font-bold rounded-lg transition-opacity whitespace-nowrap border border-slate-700 shadow-2xl pointer-events-none ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                         {sensor.label || sensor.name}
                         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900/95 border-t border-l border-slate-700 rotate-45"></div>

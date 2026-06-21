@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Thermometer, Camera, DoorClosed, Activity, Flame, 
+import {
+  Thermometer, Camera, DoorClosed, Activity, Flame,
   Lightbulb, Shield, Wind, Map, Maximize, ZoomIn, ZoomOut,
-  Mic, AppWindow, Tv, Sun, Bell, Blinds, History, Clock, 
+  Mic, AppWindow, Tv, Sun, Bell, Blinds, History, Clock,
   MousePointer2, Droplets, Radar, Video, Wifi, RefreshCw, Power, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -30,7 +30,7 @@ const RADAR_BLOCKS = [
   // Hàng 3 (Radar 3) - Y: 79.72 -> 89.28
   { id: 11, left: 35.40, top: 60.62, width: 5.95, height: 9.55 },
   { id: 12, left: 41.35, top: 60.62, width: 5.95, height: 9.55 },
-  { id: 13, left: 47.27, top: 54.03, width: 5.56, height: 11.26 }, 
+  { id: 13, left: 47.27, top: 54.03, width: 5.56, height: 11.26 },
   { id: 14, left: 52.83, top: 54.03, width: 5.56, height: 11.26 },
   { id: 15, left: 58.39, top: 54.03, width: 5.69, height: 11.26 },
 ];
@@ -75,7 +75,7 @@ export default function SmartHomeMap() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [mapDevices, setMapDevices] = useState([]);
   const [cameras, setCameras] = useState([]);
-  
+
   // State Panel điều khiển
   const [selectedSensor, setSelectedSensor] = useState(null);
   const [activeCameraId, setActiveCameraId] = useState(null);
@@ -83,12 +83,12 @@ export default function SmartHomeMap() {
   const [cameraKey, setCameraKey] = useState(Date.now());
 
   // State Dữ liệu Tab & Filter
-  const [timeFilter, setTimeFilter] = useState('1D'); 
-  const [dataFilter, setDataFilter] = useState('history'); 
-  
+  const [timeFilter, setTimeFilter] = useState('1D');
+  const [dataFilter, setDataFilter] = useState('history');
+
   const [deviceHistory, setDeviceHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  
+
   const [deviceAlerts, setDeviceAlerts] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
 
@@ -163,15 +163,15 @@ export default function SmartHomeMap() {
   useEffect(() => {
     const stompClient = wsService.connect((rawData) => {
       const { deviceId, status, value, distance } = rawData;
-      setMapDevices(prev => 
+      setMapDevices(prev =>
         prev.map(d => {
           if (d.name === deviceId) {
-            const updatedDevice = { 
-              ...d, 
+            const updatedDevice = {
+              ...d,
               state: rawData.state !== undefined ? rawData.state : d.state,
               status: status !== undefined ? status : d.status
             };
-            
+
             if (selectedSensor && selectedSensor.id === updatedDevice.id) {
               setSelectedSensor(updatedDevice);
             }
@@ -184,7 +184,7 @@ export default function SmartHomeMap() {
                 clearRadarTarget(updatedDevice.name);
               }
             }
-            
+
             return updatedDevice;
           }
           return d;
@@ -206,13 +206,13 @@ export default function SmartHomeMap() {
         fetchAlerts(selectedSensor.id, timeFilter);
       }
     }
-  }, [selectedSensor?.id, dataFilter, timeFilter]); 
+  }, [selectedSensor?.id, dataFilter, timeFilter]);
 
   const fetchHistory = async (deviceId, filterObj) => {
     setIsLoadingHistory(true);
     try {
       const queryParam = filterObj === '3D' ? '3d' : '';
-      const res = await getDeviceHistory(deviceId, queryParam); 
+      const res = await getDeviceHistory(deviceId, queryParam);
       if (res && res.code === 1000) setDeviceHistory(res.data);
     } catch {
       setDeviceHistory([]);
@@ -225,7 +225,7 @@ export default function SmartHomeMap() {
     setIsLoadingAlerts(true);
     try {
       const queryParam = filterObj === '3D' ? '3d' : '';
-      const res = await getDeviceAlerts(deviceId, queryParam); 
+      const res = await getDeviceAlerts(deviceId, queryParam);
       if (res && res.code === 1000) setDeviceAlerts(res.data);
     } catch {
       setDeviceAlerts([]);
@@ -256,7 +256,7 @@ export default function SmartHomeMap() {
   const handleDeviceClick = (e, sensor) => {
     e.stopPropagation();
     setSelectedSensor(sensor);
-    
+
     if (!sensor.isFake) {
       const isEnvOrSafety = sensor.deviceType === 'environment' || sensor.deviceType === 'safety';
       if (isHistoryOnlyDevice(sensor)) {
@@ -275,14 +275,14 @@ export default function SmartHomeMap() {
 
   const handleToggleSwitch = async () => {
     if (!selectedSensor || selectedSensor.isFake || selectedSensor.state === null) return;
-    
+
     const action = !selectedSensor.state;
     try {
       setMapDevices(prev => prev.map(d => d.id === selectedSensor.id ? { ...d, state: action } : d));
       setSelectedSensor(prev => ({ ...prev, state: action }));
-      
+
       await controlDevice(selectedSensor.id, action);
-      
+
       if (dataFilter === 'history') {
         fetchHistory(selectedSensor.id, timeFilter);
       }
@@ -302,7 +302,7 @@ export default function SmartHomeMap() {
   };
 
   const getTypeColor = (type) => {
-    switch(type) {
+    switch (type) {
       case 'environment': return 'bg-sky-500 shadow-sky-500/50';
       case 'security': return 'bg-rose-500 shadow-rose-500/50';
       case 'safety': return 'bg-amber-500 shadow-amber-500/50';
@@ -343,7 +343,7 @@ export default function SmartHomeMap() {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-slate-950">
-      
+
       {/* KHUNG HUD */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex gap-4 pointer-events-auto">
         <div className="bg-slate-900/80 backdrop-blur-md border border-white/10 p-2.5 px-6 rounded-full flex items-center gap-3 shadow-2xl">
@@ -369,8 +369,8 @@ export default function SmartHomeMap() {
         </div>
       </div>
 
-      <div className="absolute inset-0 z-0 pointer-events-none opacity-20" 
-           style={{ backgroundImage: `linear-gradient(#475569 1px, transparent 1px), linear-gradient(90deg, #475569 1px, transparent 1px)`, backgroundSize: '40px 40px' }}>
+      <div className="absolute inset-0 z-0 pointer-events-none opacity-20"
+        style={{ backgroundImage: `linear-gradient(#475569 1px, transparent 1px), linear-gradient(90deg, #475569 1px, transparent 1px)`, backgroundSize: '40px 40px' }}>
       </div>
 
       {/* BẢN ĐỒ 2D */}
@@ -420,7 +420,7 @@ export default function SmartHomeMap() {
                     const Icon = getDeviceIcon(sensor);
                     const isSelected = selectedSensor?.id === sensor.id;
                     const hasWarning = sensor.status === 'Nguy hiểm' || sensor.status === 'Cảnh báo';
-                    
+
                     return (
                       <button
                         key={sensor.id}
@@ -435,7 +435,7 @@ export default function SmartHomeMap() {
                         <div className={`relative flex items-center justify-center w-6 h-6 md:w-8 md:h-8 rounded-full text-white shadow-2xl border-2 ${isSelected ? 'border-white ring-4 ring-white/30' : 'border-white/60'} ${hasWarning ? 'bg-rose-600' : getTypeColor(sensor.deviceType)}`}>
                           <Icon className="w-3 h-3 md:w-4 md:h-4 drop-shadow-md" />
                         </div>
-                        
+
                         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-0.5 rounded bg-slate-900/90 backdrop-blur-sm text-[10px] text-white font-bold tracking-tight transition-opacity whitespace-nowrap border border-white/10 opacity-0 group-hover:opacity-100 pointer-events-none">
                           {sensor.label || sensor.name}
                         </div>
@@ -453,7 +453,7 @@ export default function SmartHomeMap() {
       <div className="absolute top-6 left-6 z-30 flex flex-col gap-4 pointer-events-auto">
         <div className="bg-slate-900/80 backdrop-blur-md border border-white/10 p-3 rounded-2xl flex items-center gap-3 shadow-2xl">
           <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]"></div>
-          <span className="text-white text-sm font-bold tracking-wide uppercase">2D Floorplan Live</span>
+          <span className="text-white text-sm font-bold tracking-wide uppercase">2D Floorplan</span>
         </div>
 
         <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl flex flex-col gap-1 w-44">
@@ -468,9 +468,8 @@ export default function SmartHomeMap() {
             <button
               key={f.id}
               onClick={() => setActiveFilter(f.id)}
-              className={`px-3 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-left ${
-                activeFilter === f.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
+              className={`px-3 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-left ${activeFilter === f.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
             >
               {f.label}
             </button>
@@ -480,15 +479,15 @@ export default function SmartHomeMap() {
 
       {/* BẢNG ĐIỀU KHIỂN BÊN PHẢI */}
       <aside className="absolute top-6 right-6 bottom-6 w-[380px] z-30 flex flex-col gap-4 animate-in slide-in-from-right duration-700 pointer-events-auto">
-        
+
         {/* KHUNG HIỂN THỊ CAMERA */}
         {activeCameraId && (
           <div className="shrink-0 h-56 bg-slate-900/85 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-2xl overflow-hidden relative animate-in fade-in zoom-in duration-300">
             {!cameraError && activeCameraObj?.streamUrl ? (
-              <img 
+              <img
                 key={cameraKey}
-                src={activeCameraObj.streamUrl} 
-                alt="Camera Stream" 
+                src={activeCameraObj.streamUrl}
+                alt="Camera Stream"
                 className="w-full h-full object-cover bg-black scale-105"
                 onError={() => setCameraError(true)}
               />
@@ -496,7 +495,7 @@ export default function SmartHomeMap() {
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-20">
                 <Wifi className="w-10 h-10 text-slate-600 mb-3 opacity-50" />
                 <p className="text-slate-400 text-xs font-bold mb-4">Camera đang ngoại tuyến.</p>
-                <button 
+                <button
                   onClick={() => { setCameraError(false); setCameraKey(Date.now()); }}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg"
                 >
@@ -507,7 +506,7 @@ export default function SmartHomeMap() {
 
             <div className="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded-lg backdrop-blur-md flex items-center gap-1.5 border border-white/10">
               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_red]"></div>
-              <span className="text-[10px] font-bold text-white tracking-widest uppercase">LIVE REC</span>
+              <span className="text-[10px] font-bold text-white tracking-widest uppercase">LIVE</span>
             </div>
 
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-8">
@@ -530,7 +529,7 @@ export default function SmartHomeMap() {
         ) : selectedSensor.isFake ? (
           <div className="flex-1 bg-slate-900/85 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-2xl flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
             <div className={`p-4 rounded-3xl ${getTypeColor(selectedSensor.deviceType)} shadow-xl mb-6`}>
-              {(()=>{
+              {(() => {
                 const DynamicIcon = getDeviceIcon(selectedSensor);
                 return <DynamicIcon className="w-8 h-8 text-white" />;
               })()}
@@ -543,7 +542,7 @@ export default function SmartHomeMap() {
             <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/10 shadow-inner">
               <Clock className="w-8 h-8 text-amber-500 opacity-80" />
             </div>
-            <h3 className="text-4xl font-black text-white tracking-widest mb-3 opacity-20">COMING<br/>SOON</h3>
+            <h3 className="text-4xl font-black text-white tracking-widest mb-3 opacity-20">COMING<br />SOON</h3>
             <p className="text-slate-500 text-sm leading-relaxed max-w-[250px]">Chức năng cho thiết bị mô phỏng này đang được phát triển.</p>
           </div>
         ) : (
@@ -552,7 +551,7 @@ export default function SmartHomeMap() {
               <div className="flex items-start justify-between mb-5">
                 <div className="flex items-center gap-4">
                   <div className={`p-4 rounded-3xl ${getTypeColor(selectedSensor.deviceType)} shadow-xl`}>
-                    {(()=>{
+                    {(() => {
                       const DynamicIcon = getDeviceIcon(selectedSensor);
                       return <DynamicIcon className="w-8 h-8 text-white" />;
                     })()}
@@ -570,9 +569,9 @@ export default function SmartHomeMap() {
 
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-black text-white leading-tight truncate pr-4">{selectedSensor.label || selectedSensor.name}</h3>
-                
+
                 {hasToggleSwitch && (
-                  <button 
+                  <button
                     onClick={handleToggleSwitch}
                     className={`w-14 h-8 rounded-full flex items-center px-1 transition-colors duration-300 shrink-0 shadow-inner border border-black/20 ${isDeviceOn ? 'bg-emerald-500' : 'bg-slate-700'}`}
                   >
@@ -592,7 +591,7 @@ export default function SmartHomeMap() {
 
               <div className="flex flex-col gap-3 mb-6 shrink-0">
                 <div className="flex bg-black/40 rounded-xl p-1 border border-white/5">
-                  
+
                   {isHistoryOnlyDevice(selectedSensor) ? (
                     <button onClick={() => handleTabClick('history')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${dataFilter === 'history' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
                       <Clock className="w-3.5 h-3.5" /> Lịch sử HĐ
@@ -615,7 +614,7 @@ export default function SmartHomeMap() {
 
                 <div className="flex gap-2">
                   {['1D', '3D'].map(t => (
-                    <button 
+                    <button
                       key={t}
                       onClick={() => setTimeFilter(t)}
                       className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition-colors ${timeFilter === t ? 'border-blue-500 bg-blue-500/20 text-blue-400' : 'border-white/5 bg-transparent text-slate-500 hover:border-white/20'}`}
@@ -653,7 +652,7 @@ export default function SmartHomeMap() {
                 ) : (
                   <div className="flex-1 min-h-0 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center text-center p-6 text-slate-500 bg-black/20">
                     <History className="w-10 h-10 mb-3 opacity-20" />
-                    <p className="text-sm font-medium">Không có lịch sử hoạt động <br/> trong khoảng thời gian này</p>
+                    <p className="text-sm font-medium">Không có lịch sử hoạt động <br /> trong khoảng thời gian này</p>
                   </div>
                 )
               ) : dataFilter === 'alert' && (
@@ -668,7 +667,7 @@ export default function SmartHomeMap() {
                       const isDanger = item.status === 'Nguy hiểm' || item.status === 'Cảnh báo';
                       const colorBg = isDanger ? 'bg-rose-500/20 text-rose-500' : 'bg-emerald-500/20 text-emerald-500';
                       const AlertIcon = isDanger ? AlertTriangle : CheckCircle2;
-                      
+
                       return (
                         <div key={item.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
                           <div className={`p-2 rounded-xl shrink-0 ${colorBg}`}>
@@ -688,7 +687,7 @@ export default function SmartHomeMap() {
                 ) : (
                   <div className="flex-1 min-h-0 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center text-center p-6 text-slate-500 bg-black/20">
                     <Shield className="w-10 h-10 mb-3 opacity-20" />
-                    <p className="text-sm font-medium">Hệ thống an toàn <br/> Không có cảnh báo nào được ghi nhận</p>
+                    <p className="text-sm font-medium">Hệ thống an toàn <br /> Không có cảnh báo nào được ghi nhận</p>
                   </div>
                 )
               )}
