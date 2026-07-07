@@ -46,10 +46,20 @@ public class SecurityConfig {
                         // WebSocket handshake public
                         .requestMatchers("/ws-smarthome/**").permitAll()
 
+                        // Admin API
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                         // Các API còn lại cần JWT
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"code\": 1001, \"message\": \"Chưa xác thực hoặc token không hợp lệ!\"}");
+                        })
+                )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

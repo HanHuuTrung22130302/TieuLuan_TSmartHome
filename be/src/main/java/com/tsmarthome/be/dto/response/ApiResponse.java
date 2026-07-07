@@ -18,4 +18,9 @@ public class ApiResponse<T> {
     private int code;
     private String msg;
     private T data;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("message")
+    public String getMessage() {
+        return msg;
+    }
 }

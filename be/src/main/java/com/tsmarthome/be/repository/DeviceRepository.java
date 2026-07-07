@@ -34,4 +34,12 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r WHERE r.home.id IN :homeIds")
     List<Device> findAllByHomeIds(@Param("homeIds") List<UUID> homeIds);
+
+    @Query("SELECT COUNT(d) FROM Device d WHERE d.room.home.id = :homeId AND d.isFake = false")
+    long countRealDevicesByHomeId(@Param("homeId") UUID homeId);
+
+    List<Device> findByRoomId(UUID roomId);
+
+    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r WHERE r.home.id = :homeId")
+    List<Device> findByHomeId(@Param("homeId") UUID homeId);
 }

@@ -10,4 +10,6 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
 
     @Query("SELECT r FROM Room r ORDER BY r.name ASC")
     List<Room> findAllOrderedByName();
+
+    List<Room> findByHomeId(UUID homeId);
 }

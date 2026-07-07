@@ -67,12 +67,15 @@ axiosClient.interceptors.response.use(
         if (res.data && res.data.code === 1000) {
           const newToken = res.data.data.token;
           const newRefreshToken = res.data.data.refreshToken;
+          const newRole = res.data.data.role;
 
           // Lưu token mới vào đúng vị trí Storage ban đầu
           if (localStorage.getItem('token')) {
             localStorage.setItem('token', newToken);
+            if (newRole) localStorage.setItem('role', newRole);
           } else if (sessionStorage.getItem('token')) {
             sessionStorage.setItem('token', newToken);
+            if (newRole) sessionStorage.setItem('role', newRole);
           }
           
           if (newRefreshToken) {

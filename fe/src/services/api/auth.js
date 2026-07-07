@@ -11,7 +11,7 @@ const authService = {
     
     // Nếu đăng nhập thành công từ Backend
     if (response.data && response.data.code === 1000) {
-      const { token, refreshToken, email, userId, fullName } = response.data.data;
+      const { token, refreshToken, email, userId, fullName, role } = response.data.data;
       
       // Lựa chọn Storage dựa trên tính năng "Ghi nhớ đăng nhập"
       const storage = rememberMe ? localStorage : sessionStorage;
@@ -21,6 +21,7 @@ const authService = {
       storage.setItem('email', email);
       storage.setItem('userId', userId);
       storage.setItem('fullName', fullName);
+      storage.setItem('role', role || 'member');
 
       // Riêng refreshToken luôn lưu ở localStorage để hỗ trợ giữ phiên lâu dài
       if (refreshToken) {

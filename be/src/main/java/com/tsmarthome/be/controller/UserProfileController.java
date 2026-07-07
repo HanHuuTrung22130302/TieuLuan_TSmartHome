@@ -78,7 +78,6 @@ public class UserProfileController {
             UserProfile profile = userProfileRepository.findById(user.getId()).orElse(null);
             if (profile == null) {
                 profile = UserProfile.builder()
-                        .userId(user.getId())
                         .user(user)
                         .build();
             }

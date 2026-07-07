@@ -15,6 +15,9 @@ import Security from './pages/security/Security';
 import AssistantHistory from './pages/assistant/AssistantHistory';
 import Schedules from './pages/schedules/Schedules';
 
+// BỔ SUNG: Import trang Bảng quản trị hệ thống
+import AdminDashboard from './pages/admin/AdminDashboard';
+
 // 1. Hàm kiểm tra xem đã có Token chưa (trong LocalStorage hoặc SessionStorage)
 const isAuthenticated = () => {
   return localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -38,6 +41,16 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+// 4. Component chặn truy cập admin đối với user thông thường
+const AdminRoute = ({ children }) => {
+  const role = localStorage.getItem('role') || sessionStorage.getItem('role');
+  if (role?.toUpperCase() !== 'ADMIN') {
+    // Không phải admin -> Đá về trang Home
+    return <Navigate to="/home" replace />;
+  }
+  return children;
+};
+
 function App() {
   return (
     <BrowserRouter>
@@ -52,6 +65,12 @@ function App() {
           
           {/* CÁC TRANG CHỨC NĂNG */}
           <Route path="/devices" element={<Devices />} />
+          <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+          <Route path="/admin/users" element={<AdminRoute><AdminDashboard tab="users" /></AdminRoute>} />
+          <Route path="/admin/homes" element={<AdminRoute><AdminDashboard tab="homes" /></AdminRoute>} />
+          <Route path="/admin/devices" element={<AdminRoute><AdminDashboard tab="devices" /></AdminRoute>} />
+          <Route path="/admin/logs" element={<AdminRoute><AdminDashboard tab="logs" /></AdminRoute>} />
+          <Route path="/admin/firmware" element={<AdminRoute><AdminDashboard tab="firmware" /></AdminRoute>} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/security" element={<Security />} />
           <Route path="/schedules" element={<Schedules />} />

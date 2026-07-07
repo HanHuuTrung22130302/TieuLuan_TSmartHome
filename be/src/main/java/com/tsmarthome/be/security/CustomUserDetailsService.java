@@ -23,11 +23,15 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("Không tìm thấy người dùng với email: " + email));
 
-        // Chuyển đối tượng User của bạn thành chuẩn UserDetails của Spring Security
+        boolean accountNonLocked = !Boolean.TRUE.equals(user.getIsLocked());
         return new org.springframework.security.core.userdetails.User(
                 user.getEmail(),
-                user.getPasswordHash(), // Chú ý: Đảm bảo tên hàm getPasswordHash() khớp với Entity User của bạn
-                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
+                user.getPasswordHash(),
+                true,
+                true,
+                true,
+                accountNonLocked,
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getSystemRole().toUpperCase()))
         );
     }
 }
