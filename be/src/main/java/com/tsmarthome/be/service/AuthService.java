@@ -48,6 +48,10 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Email hoặc mật khẩu không đúng!"));
 
+        if (Boolean.TRUE.equals(user.getIsLocked())) {
+            throw new RuntimeException("Tài khoản của bạn đã bị khóa bởi quản trị viên!");
+        }
+
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new RuntimeException("Email hoặc mật khẩu không đúng!");
         }
@@ -64,8 +68,10 @@ public class AuthService {
             refreshTokenString = refreshToken.getToken();
         }
 
-        return new AuthResponse(jwt, refreshTokenString, user.getEmail(),user.getId(),
-                user.getFirstName() + " " + user.getLastName());
+        String role = user.getSystemRole();
+
+        return new AuthResponse(jwt, refreshTokenString, user.getEmail(), user.getId(),
+                user.getFirstName() + " " + user.getLastName(), role);
     }
 
     public void forgotPassword(ForgotPasswordRequest request) {

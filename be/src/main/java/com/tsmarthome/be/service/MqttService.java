@@ -247,14 +247,12 @@ public class MqttService implements MqttCallbackExtended {
                 deviceChanged = true;
             }
 
-            if (data.containsKey("state") || data.containsKey("status")) {
-                if (data.containsKey("state")) {
-                    device.setState((Boolean) data.get("state"));
-                }
-                if (data.containsKey("status")) {
-                    device.setStatus(String.valueOf(data.get("status")));
-                }
-                deviceChanged = true;
+            // Always mark status as CONNECTED when a message is received from the physical device
+            device.setStatus("CONNECTED");
+            deviceChanged = true;
+
+            if (data.containsKey("state")) {
+                device.setState((Boolean) data.get("state"));
             }
 
             if (deviceChanged) {

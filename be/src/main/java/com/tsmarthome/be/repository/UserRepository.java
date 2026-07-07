@@ -13,4 +13,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT u FROM User u WHERE u.systemRole = 'USER' AND u.id NOT IN (SELECT uh.user.id FROM UserHome uh)"
+    )
+    java.util.List<User> findUnlinkedUsers();
 }

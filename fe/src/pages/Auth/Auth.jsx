@@ -75,12 +75,18 @@ export default function Auth() {
     }
 
     try {
-      const res = await authService.login(loginData);
+      // Truyền rememberMe từ loginData vào auth.js để thống nhất storage
+      const res = await authService.login(loginData, loginData.rememberMe);
       if (res.code === 1000) {
-        const storage = loginData.rememberMe ? localStorage : sessionStorage;
-        storage.setItem('token', res.data.token);
-        storage.setItem('refreshToken', res.data.refreshToken);
-        navigate('/dashboard');
+        // auth.js đã lưu token, refreshToken, role vào đúng storage rồi
+        // Ở đây chỉ cần đọc role để điều hướng
+        const role = res.data.role || 'USER';
+        
+        if (role.toUpperCase() === 'ADMIN') {
+          navigate('/admin');
+        } else {
+          navigate('/home');
+        }
       }
     } catch (err) {
       showToast(err.response?.data?.msg || 'Đã có lỗi kết nối đến máy chủ.', 'error');

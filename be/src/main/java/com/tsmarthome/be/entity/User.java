@@ -36,6 +36,14 @@ public class User {
     @Column(name = "is_verified")
     private Boolean isVerified;
 
+    @Column(name = "system_role", nullable = false, length = 20, columnDefinition = "VARCHAR(20) DEFAULT 'USER'")
+    @Builder.Default
+    private String systemRole = "USER";
+
+    @Column(name = "is_locked", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    @Builder.Default
+    private Boolean isLocked = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

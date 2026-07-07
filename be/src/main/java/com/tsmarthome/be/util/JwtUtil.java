@@ -5,9 +5,11 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
+import jakarta.annotation.PostConstruct;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
@@ -17,8 +19,19 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
-    private final Key key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private final long JWT_EXPIRATION = 86400000L;
+    @Value("${jwt.secret}")
+    private String secret;
+
+    @Value("${jwt.expiration}")
+    private long jwtExpiration;
+
+    private Key key;
+
+    @PostConstruct
+    public void init() {
+        // Dùng secret key cố định từ config, đảm bảo token vẫn hợp lệ sau khi restart backend
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+    }
 
     // 1. HÀM TẠO TOKEN (ĐÃ SỬA ĐỂ THÊM CUSTOM CLAIMS)
     public String generateToken(User user) {
@@ -32,7 +45,7 @@ public class JwtUtil {
                 .setClaims(claims) // Nhét cái túi đó vào Payload
                 .setSubject(user.getEmail()) // Vẫn giữ nguyên Subject là email để Spring Security dễ tìm kiếm
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + JWT_EXPIRATION))
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
                 .signWith(key)
                 .compact();
     }

@@ -3,7 +3,8 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, LayoutDashboard, Settings, LogOut, Map, Cpu, Bell, ShieldCheck,
   Mic, MicOff, Send, RefreshCw, AlertTriangle, CheckCircle2, MessageSquare, Menu, X, Clock,
-  Mail, Phone, MapPin, Check, Camera, User, Edit2, Lock, Globe, Key, Trash2
+  Mail, Phone, MapPin, Check, Camera, User, Edit2, Lock, Globe, Key, Trash2,
+  Users, Terminal
 } from 'lucide-react';
 import { sendAssistantChat } from '../services/api/assistant';
 import { getMyHomes } from '../services/api/home';
@@ -301,7 +302,16 @@ export default function MainLayout() {
     }
   };
 
-  const menuItems = [
+  const userRole = localStorage.getItem('role') || sessionStorage.getItem('role') || 'USER';
+  const isAdmin = userRole?.toUpperCase() === 'ADMIN';
+
+  const menuItems = isAdmin ? [
+    { path: '/admin/users', icon: <Users className="w-5 h-5" />, label: 'Quản lý User' },
+    { path: '/admin/homes', icon: <Home className="w-5 h-5" />, label: 'Quản lý Home' },
+    { path: '/admin/devices', icon: <Cpu className="w-5 h-5" />, label: 'Quản lý Thiết bị' },
+    { path: '/admin/logs', icon: <Terminal className="w-5 h-5" />, label: 'Quản lý Log' },
+    { path: '/admin/firmware', icon: <Settings className="w-5 h-5" />, label: 'Nạp Firmware' },
+  ] : [
     { path: '/home', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Tổng quan' },
     { path: '/map', icon: <Map className="w-5 h-5" />, label: 'Bản đồ không gian 2D' },
     { path: '/map3d', icon: <Map className="w-5 h-5" />, label: 'Bản đồ không gian 3D' },
@@ -343,7 +353,7 @@ export default function MainLayout() {
     }
   }, []);
   const handleLogout = () => {
-    const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email', 'activeHomeId'];
+    const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email', 'activeHomeId', 'role'];
     keysToRemove.forEach(key => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
@@ -442,16 +452,18 @@ export default function MainLayout() {
 
       {/* Vùng nút Đăng xuất dưới đáy cố định */}
       <div className="p-4 border-t border-white/5 space-y-1.5 shrink-0 bg-slate-950/40 sticky bottom-0">
-        <button
-          onClick={() => {
-            setIsMobileMenuOpen(false);
-            setShowProfileModal(true);
-          }}
-          className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer text-left outline-none"
-        >
-          <Settings className="w-5 h-5" />
-          Cài đặt
-        </button>
+        {!isAdmin && (
+          <button
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setShowProfileModal(true);
+            }}
+            className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer text-left outline-none"
+          >
+            <Settings className="w-5 h-5" />
+            Cài đặt
+          </button>
+        )}
 
         <button
           onClick={() => {
@@ -507,41 +519,43 @@ export default function MainLayout() {
         <Outlet />
 
         {/* HUD CHAT AI GEMINI */}
-        <div className="fixed bottom-6 left-1/2 md:left-[calc(50%+128px)] -translate-x-1/2 z-40 flex flex-col items-center gap-2.5 w-[calc(100vw-3rem)] max-w-lg pointer-events-auto">
-          {aiReply && (
-            <div className="bg-slate-900/95 border border-blue-500/30 text-blue-100 text-xs font-semibold px-5 py-3 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] border-white/5 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-full text-center backdrop-blur-md relative">
-              <p className="leading-relaxed">{aiReply}</p>
-              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-b border-r border-blue-500/30 rotate-45"></div>
+        {!isAdmin && (
+          <div className="fixed bottom-6 left-1/2 md:left-[calc(50%+128px)] -translate-x-1/2 z-40 flex flex-col items-center gap-2.5 w-[calc(100vw-3rem)] max-w-lg pointer-events-auto">
+            {aiReply && (
+              <div className="bg-slate-900/95 border border-blue-500/30 text-blue-100 text-xs font-semibold px-5 py-3 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] border-white/5 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-full text-center backdrop-blur-md relative">
+                <p className="leading-relaxed">{aiReply}</p>
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-b border-r border-blue-500/30 rotate-45"></div>
+              </div>
+            )}
+
+            <div className="w-full bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-[2rem] flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
+              <button
+                onClick={toggleListening}
+                className={`p-2.5 rounded-full transition-all shrink-0 border relative outline-none ${isListening ? 'bg-red-500 text-white border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5'}`}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {isListening && <span className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-50"></span>}
+              </button>
+
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
+                placeholder={isListening ? "Đang ghi âm giọng nói..." : "Ra lệnh cho trợ lý ảo..."}
+                className="flex-1 bg-transparent border-none text-white placeholder-slate-500 text-xs font-bold outline-none px-2"
+              />
+
+              <button
+                onClick={() => handleSendChat()}
+                disabled={!chatInput.trim() || isAiLoading}
+                className={`p-2.5 rounded-full transition-all shrink-0 outline-none ${chatInput.trim() && !isAiLoading ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-md' : 'bg-white/5 text-slate-600 cursor-not-allowed'}`}
+              >
+                {isAiLoading ? <RefreshCw className="w-4 h-4 animate-spin text-blue-400" /> : <Send className="w-4 h-4" />}
+              </button>
             </div>
-          )}
-
-          <div className="w-full bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-[2rem] flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
-            <button
-              onClick={toggleListening}
-              className={`p-2.5 rounded-full transition-all shrink-0 border relative outline-none ${isListening ? 'bg-red-500 text-white border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5'}`}
-            >
-              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              {isListening && <span className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-50"></span>}
-            </button>
-
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
-              placeholder={isListening ? "Đang ghi âm giọng nói..." : "Ra lệnh cho trợ lý ảo..."}
-              className="flex-1 bg-transparent border-none text-white placeholder-slate-500 text-xs font-bold outline-none px-2"
-            />
-
-            <button
-              onClick={() => handleSendChat()}
-              disabled={!chatInput.trim() || isAiLoading}
-              className={`p-2.5 rounded-full transition-all shrink-0 outline-none ${chatInput.trim() && !isAiLoading ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-md' : 'bg-white/5 text-slate-600 cursor-not-allowed'}`}
-            >
-              {isAiLoading ? <RefreshCw className="w-4 h-4 animate-spin text-blue-400" /> : <Send className="w-4 h-4" />}
-            </button>
           </div>
-        </div>
+        )}
       </main>
 
       {/* POPUP CONFIRM DIALOG XÁC NHẬN ĐĂNG XUẤT */}

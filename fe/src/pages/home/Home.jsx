@@ -103,6 +103,8 @@ export default function Home() {
     return { icon: Activity, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/5' };
   };
 
+
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto overflow-x-hidden font-sans">
 
