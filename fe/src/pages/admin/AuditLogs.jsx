@@ -70,7 +70,7 @@ export default function AuditLogs() {
       {/* Specific Filter Controls Row */}
       <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-white/5 border border-white/5 rounded-xl shrink-0 font-sans">
         {/* Local Search Input */}
-        <div className="flex items-center bg-white/5 border border-white/10 rounded-lg pl-4 pr-1.5 py-1.5 w-full sm:w-[450px] md:w-[500px] transition-all focus-within:border-blue-500/50">
+        <div className="flex items-center bg-white/5 border border-white/10 rounded-lg pl-4 pr-1.5 py-1.5 w-full sm:w-[420px] md:w-[480px] transition-all focus-within:border-blue-500/50">
           <input
             type="text"
             value={searchInput}
@@ -115,7 +115,9 @@ export default function AuditLogs() {
           />
         </div>
 
-        <div className="flex items-center gap-2 font-sans">
+        {/* Level Dropdown with label "Trạng thái:" */}
+        <div className="flex items-center gap-2 font-sans text-sm">
+          <span className="text-slate-400 font-bold">Trạng thái:</span>
           <select
             value={roleFilter}
             onChange={(e) => {
@@ -124,11 +126,11 @@ export default function AuditLogs() {
             }}
             className="bg-black border border-white/10 text-slate-200 text-sm font-bold rounded-lg px-3 py-2 outline-none cursor-pointer focus:border-blue-500 transition-all"
           >
-            <option value="ALL">Tất cả Mức độ</option>
-            <option value="SUCCESS">SUCCESS</option>
-            <option value="INFO">INFO</option>
-            <option value="WARNING">WARNING</option>
-            <option value="DANGER">DANGER</option>
+            <option value="ALL">Tất cả</option>
+            <option value="SUCCESS">Thành công</option>
+            <option value="INFO">Thông tin</option>
+            <option value="WARNING">Cảnh báo</option>
+            <option value="DANGER">Nguy hiểm</option>
           </select>
         </div>
       </div>
@@ -150,13 +152,10 @@ export default function AuditLogs() {
               audit.type === 'DANGER' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
               'bg-blue-500/10 text-blue-400 border border-blue-500/20'
             }`}>
-              {audit.type}
-            </span>
-            <span className={`px-2 py-0.5 rounded text-xs font-bold shrink-0 ${
-              audit.executed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-              'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-            }`}>
-              {audit.executed ? 'Thành công' : 'Thất bại'}
+              {audit.type === 'SUCCESS' ? 'Thành công' :
+               audit.type === 'INFO' ? 'Thông tin' :
+               audit.type === 'WARNING' ? 'Cảnh báo' :
+               audit.type === 'DANGER' ? 'Nguy hiểm' : audit.type}
             </span>
             <div className="flex-1 min-w-0">
               <span className="text-slate-200 font-bold">{audit.email}</span>
