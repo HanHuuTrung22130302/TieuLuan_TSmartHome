@@ -331,26 +331,76 @@ export default function MainLayout() {
   const [aiReply, setAiReply] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const recognitionRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+  const finalTranscriptRef = useRef('');
 
   // Khởi tạo Web Speech API nhận diện giọng nói (Speech-to-Text)
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const rec = new SpeechRecognition();
-      rec.continuous = false;
+      rec.continuous = true;
       rec.lang = 'vi-VN';
-      rec.interimResults = false;
+      rec.interimResults = true;
       rec.maxAlternatives = 1;
 
-      rec.onstart = () => setIsListening(true);
-      rec.onend = () => setIsListening(false);
-      rec.onresult = (event) => {
-        const speechToText = event.results[0][0].transcript;
-        setChatInput(speechToText);
-        handleSendChat(speechToText);
+      rec.onstart = () => {
+        setIsListening(true);
+        finalTranscriptRef.current = '';
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+        }
       };
+
+      rec.onend = () => {
+        setIsListening(false);
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+        }
+        setTimeout(() => {
+          const recognizedText = finalTranscriptRef.current.trim();
+          if (recognizedText) {
+            handleSendChat(recognizedText);
+          }
+        }, 100);
+      };
+
+      rec.onresult = (event) => {
+        let interimTranscript = '';
+        let localFinal = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            localFinal += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        finalTranscriptRef.current += localFinal;
+        const currentText = finalTranscriptRef.current + interimTranscript;
+        setChatInput(currentText);
+
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+        }
+        // Tự động dừng nhận diện sau 2.2 giây im lặng
+        silenceTimerRef.current = setTimeout(() => {
+          rec.stop();
+        }, 2200);
+      };
+
       recognitionRef.current = rec;
     }
+
+    return () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+    };
   }, []);
   const handleLogout = () => {
     const keysToRemove = ['token', 'refreshToken', 'userId', 'fullName', 'email', 'activeHomeId', 'role'];

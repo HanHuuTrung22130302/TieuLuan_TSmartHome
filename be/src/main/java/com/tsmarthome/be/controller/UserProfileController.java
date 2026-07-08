@@ -167,7 +167,7 @@ public class UserProfileController {
                 userProfileRepository.save(profile);
 
                 if (oldChatId != null && !oldChatId.isBlank()) {
-                    telegramService.sendMessage(oldChatId, "⚠️ <b>Hủy liên kết tài khoản!</b>\nTài khoản Telegram này đã bị ngắt kết nối khỏi hệ thống TSmartHome.");
+                    telegramService.sendMessage(oldChatId, "<b>Hủy liên kết tài khoản!</b>\nTài khoản Telegram này đã bị ngắt kết nối khỏi hệ thống TSmartHome.");
                 }
             }
             return ResponseEntity.ok(Map.of(

@@ -16,16 +16,123 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class GeminiService {
 
+    // =========================================================================
+    // CẤU HÌNH MÔ HÌNH AI CỤC BỘ (QWEN 3:8B CHẠY QUA OLLAMA)
+    // =========================================================================
+    @Value("${local.ai.url:http://localhost:11434/api/generate}")
+    private String localAiUrl;
+
+    @Value("${local.ai.model:qwen3:8b}")
+    private String localAiModel;
+
+    // =========================================================================
+    // CẤU HÌNH MÔ HÌNH CLOUD GEMINI (ĐÃ COMMENT ĐỂ TRÌNH BÀY PHẢN BIỆN)
+    // =========================================================================
+    /*
     @Value("${gemini.api.key}")
     private String apiKey;
 
     @Value("${gemini.model:gemini-3.5-flash}")
     private String model;
+    */
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
+    /**
+     * Gửi yêu cầu hội thoại thông thường tới AI cục bộ Qwen.
+     */
     public String askGemini(String userMessage) {
+        // NOTE ĐỂ TRÌNH BÀY PHẢN BIỆN: 
+        // Hàm này đã được chuyển từ Cloud Gemini sang mô hình Qwen cục bộ để chạy Offline không phụ thuộc vào internet.
+        // Mã nguồn gọi API Cloud Gemini gốc đã được lưu lại và comment ở phía cuối file này.
+        try {
+            String systemPrompt = """
+                Bạn là trợ lý AI cho hệ thống nhà thông minh TSmartHome.
+                Hãy trả lời ngắn gọn, thân thiện bằng tiếng Việt.
+                Nếu người dùng hỏi về thiết bị trong nhà, hãy trả lời dựa trên thông tin thực tế được cung cấp.
+                LƯU Ý QUAN TRỌNG: Bạn KHÔNG được tự ý tuyên bố rằng bạn đã thực hiện các lệnh bật/tắt thiết bị, mở cửa, phát nhạc hay kích hoạt kịch bản tự động hóa (như kịch bản buổi sáng, rời nhà, đi ngủ) vì các hành động điều khiển thực tế được xử lý bởi hệ thống lệnh của máy chủ. Nếu người dùng yêu cầu điều khiển hoặc chạy kịch bản nhưng hệ thống lệnh không bắt được, hãy trả lời lịch sự rằng bạn không thể điều khiển trực tiếp và khuyên họ sử dụng câu lệnh rõ ràng hơn (ví dụ: "bật đèn ngủ", "kích hoạt kịch bản buổi sáng").
+                """;
+
+            String requestBody = objectMapper.writeValueAsString(
+                    objectMapper.createObjectNode()
+                            .put("model", localAiModel)
+                            .put("prompt", "Người dùng hỏi: " + userMessage)
+                            .put("system", systemPrompt)
+                            .put("stream", false)
+            );
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(localAiUrl))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            int statusCode = response.statusCode();
+
+            if (statusCode >= 200 && statusCode < 300) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode textNode = root.path("response");
+                if (textNode.isMissingNode() || textNode.asText().isBlank()) {
+                    return "Tôi chưa nhận được câu trả lời phù hợp từ mô hình AI cục bộ.";
+                }
+                return textNode.asText();
+            }
+            return "AI Cục bộ phản hồi lỗi HTTP " + statusCode + ": " + response.body();
+        } catch (Exception e) {
+            return "Lỗi khi kết nối tới mô hình AI cục bộ Qwen: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Gửi yêu cầu trích xuất dữ liệu hoặc phân tích thông tin (hỗ trợ ép định dạng JSON).
+     */
+    public String askGeminiRaw(String systemPrompt, String userMessage, boolean jsonMode) {
+        // NOTE ĐỂ TRÌNH BÀY PHẢN BIỆN: 
+        // Phân tích ý định người dùng (Intent Parsing) thành JSON qua mô hình Qwen chạy Offline.
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode requestNode = objectMapper.createObjectNode()
+                    .put("model", localAiModel)
+                    .put("prompt", userMessage)
+                    .put("system", systemPrompt)
+                    .put("stream", false);
+
+            if (jsonMode) {
+                requestNode.put("format", "json");
+            }
+
+            String requestBody = objectMapper.writeValueAsString(requestNode);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(localAiUrl))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            int statusCode = response.statusCode();
+
+            if (statusCode >= 200 && statusCode < 300) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode textNode = root.path("response");
+                if (textNode.isMissingNode() || textNode.asText().isBlank()) {
+                    return jsonMode ? "{}" : "Tôi chưa nhận được câu trả lời phù hợp từ mô hình AI cục bộ.";
+                }
+                return textNode.asText();
+            }
+            return jsonMode ? "{\"error\": \"HTTP " + statusCode + "\"}" : "AI Cục bộ phản hồi lỗi HTTP " + statusCode + ": " + response.body();
+        } catch (Exception e) {
+            return jsonMode ? "{\"error\": \"" + e.getMessage() + "\"}" : "Lỗi khi gọi mô hình AI cục bộ Qwen: " + e.getMessage();
+        }
+    }
+
+
+    // =========================================================================
+    // CODE GỌI API CLOUD GEMINI GỐC - ĐÃ ĐƯỢC LƯU LẠI ĐỂ PHỤC VỤ TRÌNH BÀY PHẢN BIỆN
+    // =========================================================================
+    /*
+    public String askGeminiLegacy(String userMessage) {
         int maxRetries = 3;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
@@ -85,30 +192,21 @@ public class GeminiService {
                     return textNode.asText();
                 }
 
-                // Các lỗi tạm thời: retry
                 if (statusCode == 429 || statusCode == 500 || statusCode == 503 || statusCode == 504) {
                     if (attempt < maxRetries) {
-                        long delayMs = calculateRetryDelayMs(attempt);
-                        System.out.println("Gemini tạm lỗi HTTP " + statusCode
-                                + ", thử lại lần " + attempt + "/" + maxRetries
-                                + " sau " + delayMs + "ms");
-
+                        long delayMs = 1000 * attempt;
                         Thread.sleep(delayMs);
                         continue;
                     }
-
                     return "Gemini đang tạm thời quá tải hoặc chưa sẵn sàng. Bạn thử lại sau vài giây nhé.";
                 }
 
-                // Các lỗi không nên retry: 400, 401, 403...
                 return "Gemini phản hồi lỗi HTTP " + statusCode + ": " + response.body();
 
             } catch (Exception e) {
                 if (attempt < maxRetries) {
                     try {
-                        long delayMs = calculateRetryDelayMs(attempt);
-                        System.out.println("Lỗi gọi Gemini, thử lại sau " + delayMs + "ms: " + e.getMessage());
-                        Thread.sleep(delayMs);
+                        Thread.sleep(1000 * attempt);
                     } catch (InterruptedException interruptedException) {
                         Thread.currentThread().interrupt();
                         return "Yêu cầu Gemini bị gián đoạn.";
@@ -122,14 +220,13 @@ public class GeminiService {
         return "Gemini hiện chưa phản hồi được. Bạn thử lại sau nhé.";
     }
 
-    public String askGeminiRaw(String systemPrompt, String userMessage, boolean jsonMode) {
+    public String askGeminiRawLegacy(String systemPrompt, String userMessage, boolean jsonMode) {
         int maxRetries = 3;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 com.fasterxml.jackson.databind.node.ObjectNode requestNode = objectMapper.createObjectNode();
 
-                // Add systemInstruction if present
                 if (systemPrompt != null && !systemPrompt.isBlank()) {
                     requestNode.set("systemInstruction", objectMapper.createObjectNode()
                             .set("parts", objectMapper.createArrayNode()
@@ -140,7 +237,6 @@ public class GeminiService {
                     );
                 }
 
-                // Add contents
                 requestNode.set("contents", objectMapper.createArrayNode()
                         .add(objectMapper.createObjectNode()
                                 .put("role", "user")
@@ -152,7 +248,6 @@ public class GeminiService {
                         )
                 );
 
-                // Add generationConfig
                 if (jsonMode) {
                     requestNode.set("generationConfig", objectMapper.createObjectNode()
                             .put("responseMimeType", "application/json")
@@ -194,30 +289,21 @@ public class GeminiService {
                     return textNode.asText();
                 }
 
-                // Các lỗi tạm thời: retry
                 if (statusCode == 429 || statusCode == 500 || statusCode == 503 || statusCode == 504) {
                     if (attempt < maxRetries) {
-                        long delayMs = calculateRetryDelayMs(attempt);
-                        System.out.println("Gemini tạm lỗi HTTP " + statusCode
-                                + ", thử lại lần " + attempt + "/" + maxRetries
-                                + " sau " + delayMs + "ms");
-
+                        long delayMs = 1000 * attempt;
                         Thread.sleep(delayMs);
                         continue;
                     }
-
                     return jsonMode ? "{\"error\": \"Gemini too busy\"}" : "Gemini đang tạm thời quá tải hoặc chưa sẵn sàng. Bạn thử lại sau vài giây nhé.";
                 }
 
-                // Các lỗi không nên retry: 400, 401, 403...
                 return jsonMode ? "{\"error\": \"HTTP " + statusCode + "\"}" : "Gemini phản hồi lỗi HTTP " + statusCode + ": " + response.body();
 
             } catch (Exception e) {
                 if (attempt < maxRetries) {
                     try {
-                        long delayMs = calculateRetryDelayMs(attempt);
-                        System.out.println("Lỗi gọi Gemini, thử lại sau " + delayMs + "ms: " + e.getMessage());
-                        Thread.sleep(delayMs);
+                        Thread.sleep(1000 * attempt);
                     } catch (InterruptedException interruptedException) {
                         Thread.currentThread().interrupt();
                         return jsonMode ? "{\"error\": \"Interrupted\"}" : "Yêu cầu Gemini bị gián đoạn.";
@@ -230,11 +316,5 @@ public class GeminiService {
 
         return jsonMode ? "{\"error\": \"Unknown error\"}" : "Gemini hiện chưa phản hồi được. Bạn thử lại sau nhé.";
     }
-
-    private long calculateRetryDelayMs(int attempt) {
-        // exponential backoff: 1s, 2s, 4s + jitter nhỏ
-        long baseDelay = (long) Math.pow(2, attempt - 1) * 1000L;
-        long jitter = (long) (Math.random() * 500L);
-        return baseDelay + jitter;
-    }
+    */
 }

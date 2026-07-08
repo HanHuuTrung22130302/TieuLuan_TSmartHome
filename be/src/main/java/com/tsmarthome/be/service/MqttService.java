@@ -435,7 +435,7 @@ public class MqttService implements MqttCallbackExtended {
                 String timeStr = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
 
                 String message = String.format(
-                        "<b>THÔNG BÁO KHẨN CẤP - TSMARTHOME</b>\n" +
+                        "<b>THÔNG BÁO - TSMARTHOME</b>\n" +
                         "----------------------------------\n" +
                         "• <b>Thiết bị:</b> %s (Nhóm: %s)\n" +
                         "• <b>Vị trí:</b> Phòng %s - %s\n" +

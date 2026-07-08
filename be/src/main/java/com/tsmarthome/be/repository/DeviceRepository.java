@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public interface DeviceRepository extends JpaRepository<Device, UUID> {
     Optional<Device> findByName(String name);
+    List<Device> findAllByName(String name);
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.room r LEFT JOIN FETCH r.home h WHERE h.id = :homeId AND d.name = :name")
     Optional<Device> findByHomeIdAndName(@Param("homeId") UUID homeId, @Param("name") String name);
