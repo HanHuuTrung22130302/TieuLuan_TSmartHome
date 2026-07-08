@@ -8,6 +8,7 @@ import com.tsmarthome.be.entity.AssistantChat;
 import com.tsmarthome.be.entity.Device;
 import com.tsmarthome.be.repository.AssistantChatRepository;
 import com.tsmarthome.be.repository.DeviceRepository;
+import com.tsmarthome.be.repository.UserHomeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -28,6 +29,7 @@ public class AssistantService {
     private final DeviceManagementService deviceManagementService;
     private final HomeSummaryService homeSummaryService;
     private final AssistantChatRepository assistantChatRepository;
+    private final UserHomeRepository userHomeRepository;
 
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
@@ -69,10 +71,16 @@ public class AssistantService {
         }
 
         try {
-            // 1. Get all real devices
-            List<Device> devices = deviceRepository.findAll().stream()
-                    .filter(d -> Boolean.FALSE.equals(d.getIsFake()))
-                    .toList();
+            // 1. Get user's homes & devices belonging to user's homes only
+            List<UUID> homeIds = userHomeRepository.findHomeIdsByUserId(userId);
+            List<Device> devices;
+            if (homeIds.isEmpty()) {
+                devices = List.of();
+            } else {
+                devices = deviceRepository.findAllByHomeIds(homeIds).stream()
+                        .filter(d -> Boolean.FALSE.equals(d.getIsFake()))
+                        .toList();
+            }
 
             // 2. Build device list context
             StringBuilder deviceContext = new StringBuilder();
@@ -140,14 +148,14 @@ public class AssistantService {
                 %s
                 """.formatted(deviceContext.toString(), chatHistory.toString());
 
-            log.info("Sending smart intent request to Gemini...");
+            log.info("Sending smart intent request to local AI (Qwen)...");
             String rawJson = geminiService.askGeminiRaw(systemPrompt, message, true);
-            log.info("Gemini raw response: {}", rawJson);
+            log.info("Local AI (Qwen) raw response: {}", rawJson);
 
             JsonNode root = objectMapper.readTree(rawJson);
 
             if (root.has("error")) {
-                String errorMsg = root.path("error").asText("Gemini is busy");
+                String errorMsg = root.path("error").asText("AI is busy");
                 return AssistantChatResponse.builder()
                         .reply("Hiện tại hệ thống AI của TSmartHome đang tạm thời quá tải hoặc hết lượt yêu cầu (Lỗi: " + errorMsg + "). Bạn vui lòng thử lại sau vài giây nhé!")
                         .actionExecuted(false)
@@ -155,15 +163,35 @@ public class AssistantService {
                         .build();
             }
 
-            boolean isControl = root.path("isControl").asBoolean(false);
-            boolean isCheckActivity = root.path("isCheckActivity").asBoolean(false);
-            String checkDeviceName = root.path("checkDeviceName").isNull() ? null : root.path("checkDeviceName").asText(null);
-            String reply = root.path("reply").asText("Tôi đã tiếp nhận yêu cầu.");
+            boolean isControl = root.has("isControl") && root.path("isControl").asBoolean(false);
+            boolean isCheckActivity = root.has("isCheckActivity") && root.path("isCheckActivity").asBoolean(false);
+            
+            String checkDeviceName = null;
+            if (root.has("checkDeviceName") && !root.path("checkDeviceName").isNull()) {
+                checkDeviceName = root.path("checkDeviceName").asText();
+            }
+            
+            String reply = "Tôi đã tiếp nhận yêu cầu.";
+            if (root.has("reply") && !root.path("reply").isNull()) {
+                reply = root.path("reply").asText();
+            }
 
             if (isCheckActivity && checkDeviceName != null && !checkDeviceName.isBlank()) {
-                Optional<Device> dOpt = deviceRepository.findByName(checkDeviceName);
-                if (dOpt.isPresent()) {
-                    Device device = dOpt.get();
+                List<Device> matchingDevices = deviceRepository.findAllByName(checkDeviceName);
+                if (!matchingDevices.isEmpty()) {
+                    Device device = null;
+                    for (Device d : matchingDevices) {
+                        UUID deviceHomeId = (d.getRoom() != null && d.getRoom().getHome() != null)
+                                ? d.getRoom().getHome().getId() : null;
+                        if (deviceHomeId != null && homeIds.contains(deviceHomeId)) {
+                            device = d;
+                            break;
+                        }
+                    }
+                    if (device == null) {
+                        device = matchingDevices.get(0);
+                    }
+
                     if (Boolean.TRUE.equals(device.getIsFake())) {
                         return AssistantChatResponse.builder()
                                 .reply("Thiết bị " + (device.getLabel() != null ? device.getLabel() : device.getName()) + " là thiết bị ảo (isFake = true), không thể kiểm tra kết nối phần cứng thực tế.")
@@ -193,9 +221,21 @@ public class AssistantService {
                         boolean targetState = actionNode.path("state").asBoolean(false);
 
                         if (!devName.isBlank()) {
-                            Optional<Device> dOpt = deviceRepository.findByName(devName);
-                            if (dOpt.isPresent()) {
-                                Device device = dOpt.get();
+                            List<Device> matchingDevices = deviceRepository.findAllByName(devName);
+                            if (!matchingDevices.isEmpty()) {
+                                Device device = null;
+                                for (Device d : matchingDevices) {
+                                    UUID deviceHomeId = (d.getRoom() != null && d.getRoom().getHome() != null)
+                                            ? d.getRoom().getHome().getId() : null;
+                                    if (deviceHomeId != null && homeIds.contains(deviceHomeId)) {
+                                        device = d;
+                                        break;
+                                    }
+                                }
+                                if (device == null) {
+                                    device = matchingDevices.get(0);
+                                }
+
                                 if (!Boolean.TRUE.equals(device.getIsFake()) && !"temperature".equals(device.getDeviceType()) && !"air_quality".equals(device.getDeviceType())) {
                                     try {
                                         deviceManagementService.controlDevice(device.getId(), targetState);
@@ -243,7 +283,7 @@ public class AssistantService {
                     .build();
 
         } catch (Exception e) {
-            log.error("Error in executeChatLogic: ", e);
+            log.error("Error in executeChatLogic: Exception class=" + e.getClass().getName() + ", message=" + e.getMessage(), e);
             // Fallback to basic gemini call
             try {
                 String fallbackReply = geminiService.askGemini(message);

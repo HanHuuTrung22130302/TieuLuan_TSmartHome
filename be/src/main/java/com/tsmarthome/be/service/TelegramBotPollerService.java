@@ -38,7 +38,8 @@ public class TelegramBotPollerService {
 
     @PostConstruct
     public void init() {
-        // Run a one-time request on startup to find the latest update_id and skip past updates
+        // Run a one-time request on startup to find the latest update_id and skip past
+        // updates
         try {
             if (botToken == null || botToken.isBlank() || botToken.contains("botToken")) {
                 return;
@@ -52,7 +53,8 @@ public class TelegramBotPollerService {
                     JsonNode result = root.get("result");
                     if (result.isArray() && result.size() > 0) {
                         lastUpdateId = result.get(0).get("update_id").asLong();
-                        log.info("Telegram Bot Poller initialized. Skipping past updates. Next offset: {}", lastUpdateId + 1);
+                        log.info("Telegram Bot Poller initialized. Skipping past updates. Next offset: {}",
+                                lastUpdateId + 1);
                     }
                 }
             }
@@ -116,8 +118,11 @@ public class TelegramBotPollerService {
             if (from.has("username") && !from.get("username").isNull() && !from.get("username").asText().isBlank()) {
                 username = from.get("username").asText();
             } else {
-                String first = from.has("first_name") && !from.get("first_name").isNull() ? from.get("first_name").asText() : "";
-                String last = from.has("last_name") && !from.get("last_name").isNull() ? from.get("last_name").asText() : "";
+                String first = from.has("first_name") && !from.get("first_name").isNull()
+                        ? from.get("first_name").asText()
+                        : "";
+                String last = from.has("last_name") && !from.get("last_name").isNull() ? from.get("last_name").asText()
+                        : "";
                 username = (first + " " + last).trim();
             }
         }
@@ -126,7 +131,8 @@ public class TelegramBotPollerService {
         if (text.startsWith("/link ") || text.startsWith("/start ")) {
             String[] parts = text.split("\\s+");
             if (parts.length < 2) {
-                telegramService.sendMessage(chatIdStr, "❌ Vui lòng cung cấp mã liên kết. Ví dụ: <code>/link TSM-8F4K2P</code>");
+                telegramService.sendMessage(chatIdStr,
+                        "Vui lòng cung cấp mã liên kết. Ví dụ: <code>/link TSM-8F4K2P</code>");
                 return;
             }
 
@@ -134,33 +140,35 @@ public class TelegramBotPollerService {
             Optional<TelegramLinkCode> codeOpt = linkCodeRepository.findByCode(codeStr);
 
             if (codeOpt.isEmpty()) {
-                telegramService.sendMessage(chatIdStr, "❌ Mã liên kết <b>" + codeStr + "</b> không hợp lệ hoặc không tồn tại.");
+                telegramService.sendMessage(chatIdStr,
+                        "Mã liên kết <b>" + codeStr + "</b> không hợp lệ hoặc không tồn tại.");
                 return;
             }
 
             TelegramLinkCode linkCode = codeOpt.get();
 
             if (linkCode.getIsUsed()) {
-                telegramService.sendMessage(chatIdStr, "❌ Mã liên kết <b>" + codeStr + "</b> đã được sử dụng trước đó.");
+                telegramService.sendMessage(chatIdStr,
+                        "Mã liên kết <b>" + codeStr + "</b> đã được sử dụng trước đó.");
                 return;
             }
-
             if (linkCode.getExpiresAt().isBefore(LocalDateTime.now())) {
-                telegramService.sendMessage(chatIdStr, "❌ Mã liên kết <b>" + codeStr + "</b> đã hết hạn.");
+                telegramService.sendMessage(chatIdStr, " Mã liên kết <b>" + codeStr + "</b> đã hết hạn.");
                 return;
             }
 
             // Check if this Telegram Chat ID is already linked to another user
             Optional<UserProfile> existingProfileOpt = userProfileRepository.findByTelegramChatId(chatIdStr);
             if (existingProfileOpt.isPresent() && !existingProfileOpt.get().getUserId().equals(linkCode.getUserId())) {
-                telegramService.sendMessage(chatIdStr, "⚠️ Tài khoản Telegram này đã được liên kết với một tài khoản TSmartHome khác.");
+                telegramService.sendMessage(chatIdStr,
+                        " Tài khoản Telegram này đã được liên kết với một tài khoản TSmartHome khác.");
                 return;
             }
 
             // Perform link
             UserProfile profile = userProfileRepository.findById(linkCode.getUserId()).orElse(null);
             if (profile == null) {
-                telegramService.sendMessage(chatIdStr, "❌ Không tìm thấy hồ sơ người dùng trong hệ thống để liên kết.");
+                telegramService.sendMessage(chatIdStr, " Không tìm thấy hồ sơ người dùng trong hệ thống để liên kết.");
                 return;
             }
 
@@ -171,10 +179,13 @@ public class TelegramBotPollerService {
             linkCode.setIsUsed(true);
             linkCodeRepository.save(linkCode);
 
-            telegramService.sendMessage(chatIdStr, "✅ <b>Liên kết thành công!</b>\nTài khoản Telegram của bạn đã được kết nối với hệ thống TSmartHome.\nTừ bây giờ bạn sẽ nhận được thông báo từ nhà thông minh.");
-            log.info("Linked Telegram chat ID {} (username {}) to user ID {}", chatIdStr, username, linkCode.getUserId());
+            telegramService.sendMessage(chatIdStr,
+                    " <b>Liên kết thành công!</b>\nTài khoản Telegram của bạn đã được kết nối với hệ thống TSmartHome.\nTừ bây giờ bạn sẽ nhận được thông báo từ nhà thông minh.");
+            log.info("Linked Telegram chat ID {} (username {}) to user ID {}", chatIdStr, username,
+                    linkCode.getUserId());
         } else if (text.equals("/start") || text.equals("/help")) {
-            telegramService.sendMessage(chatIdStr, "👋 Chào mừng bạn đến với <b>TSmartHome Bot</b>!\n\nĐể liên kết tài khoản và nhận các cảnh báo từ hệ thống Smart Home, vui lòng nhập lệnh:\n<code>/link [MÃ_LIÊN_KẾT]</code>\n\nVí dụ: <code>/link TSM-8F4K2P</code>\nHoặc bạn có thể truy cập trang cá nhân của mình trên TSmartHome để tạo mã.");
+            telegramService.sendMessage(chatIdStr,
+                    " Chào mừng bạn đến với <b>TSmartHome Bot</b>!\n\nĐể liên kết tài khoản và nhận các cảnh báo từ hệ thống Smart Home, vui lòng nhập lệnh:\n<code>/link [MÃ_LIÊN_KẾT]</code>\n\nVí dụ: <code>/link TSM-8F4K2P</code>\nHoặc bạn có thể truy cập trang cá nhân của mình trên TSmartHome để tạo mã.");
         }
     }
 }
