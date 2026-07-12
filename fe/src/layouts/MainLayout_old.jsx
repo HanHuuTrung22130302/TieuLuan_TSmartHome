@@ -125,12 +125,9 @@ export default function MainLayout() {
     fetchProfileSilent();
 
     const handleOpenProfile = () => setShowProfileModal(true);
-    const handleOpenLogout = () => setShowLogoutModal(true);
     window.addEventListener('tsmarthome_open_profile', handleOpenProfile);
-    window.addEventListener('tsmarthome_open_logout', handleOpenLogout);
     return () => {
       window.removeEventListener('tsmarthome_open_profile', handleOpenProfile);
-      window.removeEventListener('tsmarthome_open_logout', handleOpenLogout);
     };
   }, []);
 
@@ -533,11 +530,82 @@ export default function MainLayout() {
   );
 
   return (
-    <div className="w-screen h-screen bg-slate-950 text-white font-sans overflow-hidden relative">
+    <div className="flex flex-col md:flex-row h-screen w-full bg-slate-950 text-white font-sans overflow-hidden">
+
+      {/* HEADER ĐIỆN THOẠI */}
+      <header className="h-16 w-full bg-slate-900 border-b border-white/5 flex items-center justify-between px-4 shrink-0 md:hidden z-30">
+        <div className="flex items-center gap-2.5">
+          <div className="bg-blue-600 p-1.5 rounded-lg">
+            <Home className="text-white w-4 h-4" />
+          </div>
+          <span className="text-sm font-black tracking-widest text-white uppercase">TSmartHome</span>
+        </div>
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-2.5 bg-white/5 border border-white/10 rounded-xl hover:text-white active:scale-95 transition-all text-slate-300"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      </header>
+
+      {/* SIDEBAR CỐ ĐỊNH PC */}
+      <aside className="w-64 hidden md:flex h-full shrink-0 z-20">
+        <SidebarContent />
+      </aside>
+
+      {/* NGĂN KÉO DI ĐỘNG DRAWER (Đã nâng lên z-50 để đè lên thanh Mic chat) */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex animate-in fade-in duration-300">
+          <div onClick={() => setIsMobileMenuOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+          <div className="relative w-64 h-full animate-in slide-in-from-left duration-300 shadow-2xl">
+            <SidebarContent />
+          </div>
+        </div>
+      )}
 
       {/* KHÔNG GIAN LÀM VIỆC CHÍNH */}
-      <main className="w-full h-full relative bg-[#0a0a0a] overflow-hidden">
+      <main className="flex-1 h-full overflow-y-auto relative bg-[#0a0a0a]">
+        <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-500/5 to-transparent -z-10 pointer-events-none"></div>
         <Outlet />
+
+        {/* HUD CHAT AI GEMINI */}
+        {!isAdmin && (
+          <div className="fixed bottom-6 left-1/2 md:left-[calc(50%+128px)] -translate-x-1/2 z-40 flex flex-col items-center gap-2.5 w-[calc(100vw-3rem)] max-w-lg pointer-events-auto">
+            {aiReply && (
+              <div className="bg-slate-900/95 border border-blue-500/30 text-blue-100 text-xs font-semibold px-5 py-3 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] border-white/5 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-full text-center backdrop-blur-md relative">
+                <p className="leading-relaxed">{aiReply}</p>
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-b border-r border-blue-500/30 rotate-45"></div>
+              </div>
+            )}
+
+            <div className="w-full bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-[2rem] flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
+              <button
+                onClick={toggleListening}
+                className={`p-2.5 rounded-full transition-all shrink-0 border relative outline-none ${isListening ? 'bg-red-500 text-white border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5'}`}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {isListening && <span className="absolute inset-0 rounded-full border border-red-500 animate-ping opacity-50"></span>}
+              </button>
+
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
+                placeholder={isListening ? "Đang ghi âm giọng nói..." : "Ra lệnh cho trợ lý ảo..."}
+                className="flex-1 bg-transparent border-none text-white placeholder-slate-500 text-xs font-bold outline-none px-2"
+              />
+
+              <button
+                onClick={() => handleSendChat()}
+                disabled={!chatInput.trim() || isAiLoading}
+                className={`p-2.5 rounded-full transition-all shrink-0 outline-none ${chatInput.trim() && !isAiLoading ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-md' : 'bg-white/5 text-slate-600 cursor-not-allowed'}`}
+              >
+                {isAiLoading ? <RefreshCw className="w-4 h-4 animate-spin text-blue-400" /> : <Send className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* POPUP CONFIRM DIALOG XÁC NHẬN ĐĂNG XUẤT */}
