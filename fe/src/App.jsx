@@ -63,24 +63,20 @@ function App() {
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="/home" element={<Home />} />
           
-          {/* CÁC TRANG CHỨC NĂNG */}
-          <Route path="/devices" element={<Devices />} />
-          <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
-          <Route path="/admin/users" element={<AdminRoute><AdminDashboard tab="users" /></AdminRoute>} />
-          <Route path="/admin/homes" element={<AdminRoute><AdminDashboard tab="homes" /></AdminRoute>} />
-          <Route path="/admin/devices" element={<AdminRoute><AdminDashboard tab="devices" /></AdminRoute>} />
-          <Route path="/admin/logs" element={<AdminRoute><AdminDashboard tab="logs" /></AdminRoute>} />
-          <Route path="/admin/firmware" element={<AdminRoute><AdminDashboard tab="firmware" /></AdminRoute>} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/security" element={<Security />} />
-          <Route path="/schedules" element={<Schedules />} />
-          
-          {/* BỔ SUNG: Route lịch sử trò chuyện của Trợ lý AI */}
-          <Route path="/assistant-history" element={<AssistantHistory />} />
-          
-          {/* CÁC TRANG BẢN ĐỒ */}
-          <Route path="/map" element={<SmartHomeMap />} />
-          <Route path="/map3d" element={<SmartHomeMap3D />} />
+          {/* CÁC TRANG CHỨC NĂNG - TỰ ĐỘNG CHUYỂN HƯỚNG VỀ TRANG HỢP NHẤT */}
+          <Route path="/devices" element={<Navigate to="/home" replace />} />
+          <Route path="/admin" element={<Navigate to="/home" replace />} />
+          <Route path="/admin/users" element={<Navigate to="/home" replace />} />
+          <Route path="/admin/homes" element={<Navigate to="/home" replace />} />
+          <Route path="/admin/devices" element={<Navigate to="/home" replace />} />
+          <Route path="/admin/logs" element={<Navigate to="/home" replace />} />
+          <Route path="/admin/firmware" element={<Navigate to="/home" replace />} />
+          <Route path="/notifications" element={<Navigate to="/home" replace />} />
+          <Route path="/security" element={<Navigate to="/home" replace />} />
+          <Route path="/schedules" element={<Navigate to="/home" replace />} />
+          <Route path="/assistant-history" element={<Navigate to="/home" replace />} />
+          <Route path="/map" element={<Navigate to="/home" replace />} />
+          <Route path="/map3d" element={<Navigate to="/home" replace />} />
         </Route>
 
         {/* ================= 404 CATCH-ALL ================= */}

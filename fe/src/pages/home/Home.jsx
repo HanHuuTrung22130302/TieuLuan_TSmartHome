@@ -1,354 +1,636 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  Search, Mic, ChevronDown, Wind, Droplets, Sun,
-  MapPin, CloudRain, Navigation, ShieldCheck, Activity,
-  Flame, Thermometer, Radar, Volume2, AlertTriangle,
-  CheckCircle2, Clock, Wifi, Maximize, Video, ChevronLeft, ChevronRight
+import { useState, useEffect, useRef } from 'react';
+import { 
+  LayoutDashboard, Cpu, Video, Bell, Clock, MessageSquare, Settings, Terminal, LogOut, Globe, AppWindow,
+  ZoomIn, ZoomOut, Maximize
 } from 'lucide-react';
 import useWeather from '../../hooks/useWeather';
-import { getRecentLogs } from '../../services/api/log';
+import { getMapDevices, getCameraStreams } from '../../services/api/map';
 import wsService from '../../services/api/wsService';
-import { getDeviceInfo } from '../../utils/deviceMapper';
+
+// Import các component con của hệ điều hành TSmartOS
+import DesktopWindow from './components/DesktopWindow';
+import Map2D from './components/Map2D';
+import Map3D from './components/Map3D';
+import DashboardApp from './components/DashboardApp';
+import DevicesListApp from './components/DevicesListApp';
+import DeviceInspectorApp from './components/DeviceInspectorApp';
+import CameraApp from './components/CameraApp';
+import NotificationsApp from './components/NotificationsApp';
+import SchedulesApp from './components/SchedulesApp';
+import AiChatApp from './components/AiChatApp';
+import AdminDashboardApp from './components/AdminDashboardApp';
+import SettingsApp from './components/SettingsApp';
+
+// ================= HÀM XÁC ĐỊNH BLOCK RADAR =================
+const getBlockIdFromRadar = (radarName, distanceStr, valueStr) => {
+  const d = parseFloat(distanceStr || valueStr);
+  if (isNaN(d)) return null;
+
+  if (radarName === 'hallway_sensor_radar') {
+    if (d > 0 && d < 4) return 'hallway_1';
+    if (d > 4 && d < 8) return 'hallway_2';
+    return null;
+  }
+
+  const blockMatch = valueStr?.match(/Block (\d+)/i);
+  if (blockMatch) return parseInt(blockMatch[1]);
+
+  let rowOffset = 0;
+  if (radarName === 'livingroom_sensor_radar') rowOffset = 0;
+  else if (radarName === 'livingroom_sensor_radar2') rowOffset = 5;
+  else if (radarName === 'livingroom_sensor_radar3') rowOffset = 10;
+  else return null;
+
+  let col = 0;
+  if (d > 14.0) return null;
+  else if (d < 14.0 && d >= 11.5) col = 1;
+  else if (d < 11.5 && d >= 9.0) col = 2;
+  else if (d < 9.0 && d >= 6.0) col = 3;
+  else if (d < 6.0 && d >= 3.0) col = 4;
+  else if (d < 3.0 && d >= 0.0) col = 5;
+  else return null;
+
+  return rowOffset + col;
+};
 
 export default function Home() {
   const weather = useWeather();
+  const [viewMode, setViewMode] = useState('2D'); // '2D' or '3D'
   const [currentDate, setCurrentDate] = useState('');
-  const [timeFilter] = useState('1D'); // Đã fix cứng mặc định 1D
-  const [moduleFilter, setModuleFilter] = useState('all');
-
-  const [logs, setLogs] = useState([]);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const cameraUrl = "/camera-thinker/stream";
-
   const [userProfile, setUserProfile] = useState({
-    fullName: localStorage.getItem('fullName') || '123',
+    fullName: localStorage.getItem('fullName') || 'User',
     avatarUrl: localStorage.getItem('avatarUrl') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Trung'
   });
 
+  // State quản lý thiết bị & WebSocket
+  const [mapDevices, setMapDevices] = useState([]);
+  const [selectedSensor, setSelectedSensor] = useState(null);
+  const [radarTargets, setRadarTargets] = useState({});
+  const radarTimersRef = useRef({});
+  const transformRef = useRef(null);
+
+  // Default Window Configurations
+  const DEFAULT_WINDOWS = {
+    dashboard: { id: 'dashboard', label: 'Dashboard', isOpen: true, minimized: false, maximized: false, pinned: false, x: 40, y: 80, width: 400, height: 760, zIndex: 10 },
+    devices: { id: 'devices', label: 'Danh sách Thiết bị', isOpen: false, minimized: false, maximized: false, pinned: false, x: 100, y: 120, width: 340, height: 500, zIndex: 10 },
+    inspector: { id: 'inspector', label: 'Chi tiết Thiết bị', isOpen: false, minimized: false, maximized: false, pinned: false, x: 860, y: 80, width: 380, height: 580, zIndex: 10, activeDeviceId: null },
+    camera: { id: 'camera', label: 'Camera Trực tiếp', isOpen: false, minimized: false, maximized: false, pinned: false, x: 450, y: 150, width: 720, height: 480, zIndex: 10 },
+    notifications: { id: 'notifications', label: 'Lịch sử Cảnh báo', isOpen: false, minimized: false, maximized: false, pinned: false, x: 180, y: 90, width: 900, height: 580, zIndex: 10 },
+    schedules: { id: 'schedules', label: 'Kịch bản Hẹn giờ', isOpen: false, minimized: false, maximized: false, pinned: false, x: 220, y: 110, width: 850, height: 560, zIndex: 10 },
+    aiChat: { id: 'aiChat', label: 'Trợ lý ảo TSmartAI', isOpen: false, minimized: false, maximized: false, pinned: false, x: 440, y: 100, width: 440, height: 540, zIndex: 10 },
+    settings: { id: 'settings', label: 'Cấu hình Hệ thống', isOpen: false, minimized: false, maximized: false, pinned: false, x: 200, y: 80, width: 800, height: 580, zIndex: 10 },
+    admin: { id: 'admin', label: 'Quản trị hệ thống', isOpen: false, minimized: false, maximized: false, pinned: false, x: 120, y: 70, width: 950, height: 620, zIndex: 10 }
+  };
+
+  // State quản lý Window Manager
+  const [maxZIndex, setMaxZIndex] = useState(10);
+  const [windows, setWindows] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tsmarthome_windows_config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const merged = { ...DEFAULT_WINDOWS };
+        Object.keys(parsed).forEach(key => {
+          if (merged[key]) {
+            merged[key] = { ...merged[key], ...parsed[key] };
+          }
+        });
+        return merged;
+      }
+    } catch (e) {
+      console.error("Failed to load windows config from localStorage:", e);
+    }
+    return DEFAULT_WINDOWS;
+  });
+
+  // Save window configuration to localStorage on change
   useEffect(() => {
+    localStorage.setItem('tsmarthome_windows_config', JSON.stringify(windows));
+  }, [windows]);
+
+  // Check Admin Role
+  const userRole = localStorage.getItem('role') || sessionStorage.getItem('role') || 'USER';
+  const isAdmin = userRole?.toUpperCase() === 'ADMIN';
+
+  // Load Date & Profile
+  useEffect(() => {
+    const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    setCurrentDate(new Date().toLocaleDateString('vi-VN', dateOptions));
+
     const handleProfileUpdate = () => {
       setUserProfile({
-        fullName: localStorage.getItem('fullName') || '123',
+        fullName: localStorage.getItem('fullName') || 'User',
         avatarUrl: localStorage.getItem('avatarUrl') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Trung'
       });
     };
     window.addEventListener('tsmarthome_profile_updated', handleProfileUpdate);
-    handleProfileUpdate();
-    return () => {
-      window.removeEventListener('tsmarthome_profile_updated', handleProfileUpdate);
-    };
+    return () => window.removeEventListener('tsmarthome_profile_updated', handleProfileUpdate);
   }, []);
 
+  // Fetch Devices list on mount
   useEffect(() => {
-    const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    setCurrentDate(new Date().toLocaleDateString('vi-VN', dateOptions));
-  }, []);
-
-  useEffect(() => {
-    const fetchLogs = async () => {
-      const result = await getRecentLogs(timeFilter, moduleFilter, page, 10);
-      if (result && result.code === 1000 && result.data) {
-        setLogs(result.data.content);
-        setTotalPages(result.data.totalPages);
+    const fetchDevices = async () => {
+      try {
+        const res = await getMapDevices();
+        if (res && res.code === 1000) {
+          setMapDevices(res.data);
+        }
+      } catch (err) {
+        console.error("Lỗi khi fetch map devices:", err);
       }
     };
-    fetchLogs();
-  }, [timeFilter, moduleFilter, page]);
+    fetchDevices();
+  }, []);
 
+  // WebSockets State sync
   useEffect(() => {
     const stompClient = wsService.connect((rawData) => {
-      const dateObj = new Date(rawData.timestamp * 1000);
-      const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour12: false });
-      const dateStr = dateObj.toLocaleDateString('vi-VN');
-      const deviceInfo = getDeviceInfo(rawData.deviceId);
+      const { deviceId, status, value, distance } = rawData;
+      setMapDevices(prev =>
+        prev.map(d => {
+          if (d.name === deviceId) {
+            const updatedDevice = {
+              ...d,
+              state: rawData.state !== undefined ? rawData.state : d.state,
+              status: status !== undefined ? status : d.status
+            };
 
-      const newLog = {
-        id: Date.now() + Math.random(),
-        deviceId: rawData.deviceId,
-        deviceName: deviceInfo.name,
-        value: rawData.value,
-        status: rawData.status,
-        time: timeStr,
-        date: dateStr,
-        type: deviceInfo.type
-      };
+            if (selectedSensor && selectedSensor.id === updatedDevice.id) {
+              setSelectedSensor(updatedDevice);
+            }
 
-      setLogs(prevLogs => {
-        if (moduleFilter !== 'all' && newLog.type !== moduleFilter) return prevLogs;
-        if (page !== 0) return prevLogs;
-        return [newLog, ...prevLogs].slice(0, 10);
-      });
+            if (updatedDevice.deviceType === 'radar') {
+              const blockId = getBlockIdFromRadar(updatedDevice.name, distance, value);
+              if ((status === 'Cảnh báo' || status === 'Phát hiện') && blockId) {
+                showRadarTarget(updatedDevice.name, blockId);
+              } else {
+                clearRadarTarget(updatedDevice.name);
+              }
+            }
+
+            return updatedDevice;
+          }
+          return d;
+        })
+      );
     });
 
     return () => {
       wsService.disconnect(stompClient);
     };
-  }, [moduleFilter, page]);
+  }, [selectedSensor]);
 
-  const handleFilterChange = (type, value) => {
-    if (type === 'module') setModuleFilter(value);
-    setPage(0);
+  // Clean radar timers
+  useEffect(() => {
+    return () => {
+      Object.values(radarTimersRef.current).forEach(timer => clearTimeout(timer));
+      radarTimersRef.current = {};
+    };
+  }, []);
+
+  const showRadarTarget = (radarName, blockId) => {
+    if (!radarName || !blockId) return;
+    if (radarTimersRef.current[radarName]) clearTimeout(radarTimersRef.current[radarName]);
+    setRadarTargets(prev => ({ ...prev, [radarName]: blockId }));
+
+    radarTimersRef.current[radarName] = setTimeout(() => {
+      setRadarTargets(prev => {
+        const next = { ...prev };
+        delete next[radarName];
+        return next;
+      });
+      delete radarTimersRef.current[radarName];
+    }, 3000);
   };
 
-  const getLogStyle = (log) => {
-    if (log.status === 'Nguy hiểm' || log.status === 'Cảnh báo') return { icon: AlertTriangle, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/30' };
-    if (log.status === 'An toàn') return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' };
-    if (log.type === 'audio') return { icon: Volume2, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/5' };
-    if (log.type === 'temp') return { icon: Thermometer, color: 'text-sky-400', bg: 'bg-sky-400/10', border: 'border-sky-400/30' };
-    if (log.type === 'gas') return { icon: Wind, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/30' };
-    if (log.type === 'radar') return { icon: Radar, color: 'text-indigo-400', bg: 'bg-indigo-400/10', border: 'border-indigo-400/30' };
-
-    return { icon: Activity, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/5' };
+  const clearRadarTarget = (radarName) => {
+    if (!radarName) return;
+    if (radarTimersRef.current[radarName]) {
+      clearTimeout(radarTimersRef.current[radarName]);
+      delete radarTimersRef.current[radarName];
+    }
+    setRadarTargets(prev => {
+      const next = { ...prev };
+      delete next[radarName];
+      return next;
+    });
   };
 
+  // Window Manager Logic
+  const handleWindowClose = (id) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], isOpen: false }
+    }));
+  };
 
+  const handleWindowMinimize = (id) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], minimized: true }
+    }));
+  };
+
+  const handleWindowMaximize = (id) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], maximized: !prev[id].maximized }
+    }));
+  };
+
+  const handleWindowPin = (id) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], pinned: !prev[id].pinned }
+    }));
+  };
+
+  const handleWindowFocus = (id) => {
+    const nextZ = maxZIndex + 1;
+    setMaxZIndex(nextZ);
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], zIndex: nextZ }
+    }));
+  };
+
+  const handleWindowDrag = (id, newX, newY) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], x: newX, y: newY }
+    }));
+  };
+
+  const handleWindowResize = (id, newW, newH) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], width: newW, height: newH }
+    }));
+  };
+
+  // Select device (Marker on Map or List item clicked)
+  const handleSelectDevice = (device) => {
+    setSelectedSensor(device);
+    
+    // Increment zIndex to focus Inspector window
+    const nextZ = maxZIndex + 1;
+    setMaxZIndex(nextZ);
+
+    setWindows(prev => ({
+      ...prev,
+      inspector: {
+        ...prev.inspector,
+        isOpen: true,
+        minimized: false,
+        zIndex: nextZ,
+        activeDeviceId: device.id
+      }
+    }));
+  };
+
+  // Dock click handler (Window Manager Specification implementation)
+  const handleDockClick = (id) => {
+    const win = windows[id];
+    const nextZ = maxZIndex + 1;
+    setMaxZIndex(nextZ);
+
+    if (!win.isOpen) {
+      // 1. Not open -> Open it
+      setWindows(prev => ({
+        ...prev,
+        [id]: { ...prev[id], isOpen: true, minimized: false, zIndex: nextZ }
+      }));
+    } else if (win.minimized) {
+      // 4. Minimized -> Restore and focus
+      setWindows(prev => ({
+        ...prev,
+        [id]: { ...prev[id], minimized: false, zIndex: nextZ }
+      }));
+    } else {
+      // Window is open and visible. Check if focused.
+      const highestZ = Object.values(windows)
+        .filter(w => w.isOpen && !w.minimized)
+        .reduce((max, w) => (w.zIndex > max ? w.zIndex : max), 0);
+
+      const isFocused = win.zIndex === highestZ;
+
+      if (!isFocused) {
+        // 2. Open but obscured -> Focus
+        setWindows(prev => ({
+          ...prev,
+          [id]: { ...prev[id], zIndex: nextZ }
+        }));
+      } else {
+        // 3. Open and focused -> Minimize
+        setWindows(prev => ({
+          ...prev,
+          [id]: { ...prev[id], minimized: true }
+        }));
+      }
+    }
+  };
+
+  // Floating apps list for Dock
+  const dockApps = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'devices', label: 'Thiết bị', icon: Cpu },
+    { id: 'inspector', label: 'Inspector', icon: Settings },
+    { id: 'camera', label: 'Security Cam', icon: Video },
+    { id: 'notifications', label: 'Cảnh báo', icon: Bell },
+    { id: 'schedules', label: 'Kịch bản', icon: Clock },
+    { id: 'aiChat', label: 'Trợ lý ảo', icon: MessageSquare },
+    { id: 'settings', label: 'Cài đặt', icon: Globe },
+  ];
+
+  if (isAdmin) {
+    dockApps.push({ id: 'admin', label: 'Admin Panel', icon: Terminal });
+  }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-8 animate-in fade-in duration-500 overflow-y-auto overflow-x-hidden font-sans">
+    <div className="relative w-full h-full bg-slate-950 overflow-hidden select-none">
+      
+      {/* DESKTOP BACKGROUND WALLPAPER (2D / 3D MAPS) */}
+      <div className="absolute inset-0 z-0 select-none">
+        {viewMode === '2D' ? (
+          <Map2D
+            devices={mapDevices}
+            activeFilter="all"
+            selectedSensor={selectedSensor}
+            onDeviceClick={(e, d) => handleSelectDevice(d)}
+            radarTargets={radarTargets}
+            transformRef={transformRef}
+          />
+        ) : (
+          <Map3D
+            devices={mapDevices}
+            activeFilter="all"
+            selectedSensor={selectedSensor}
+            onDeviceClick={(e, d) => handleSelectDevice(d)}
+            radarTargets={radarTargets}
+          />
+        )}
+      </div>
 
-      {/* ================= HEADER ================= */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
-        <div>
-          <p className="text-slate-500 font-bold tracking-widest text-xs uppercase mb-1">{currentDate}</p>
-          <h2 className="text-3xl font-bold tracking-tight">Bảng thông báo</h2>
-        </div>
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="flex items-center bg-white/5 border border-white/10 rounded-full px-4 py-2.5 flex-1 md:w-80">
-            <Search className="w-4 h-4 text-slate-400 mr-3" />
-            <input type="text" placeholder="Tìm kiếm hệ thống..." className="bg-transparent border-none outline-none text-sm text-white w-full placeholder:text-slate-500" />
+      {/* FLOATING TOPBAR */}
+      <header className="fixed top-0 left-0 right-0 z-40 h-14 bg-slate-950/60 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 select-none pointer-events-none">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-600 p-1.5 rounded-lg">
+            <AppWindow className="text-white w-4.5 h-4.5" />
           </div>
-          <button className="p-3 bg-white text-black rounded-full hover:bg-slate-200 transition-colors shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-            <Mic className="w-4 h-4" />
-          </button>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black tracking-widest text-white uppercase leading-none">TSmartOS</span>
+            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{currentDate}</span>
+          </div>
+        </div>
+
+        {/* Center Pill: Mode Toggle & 2D Zoom controls */}
+        <div className="flex items-center bg-slate-950/80 p-1 rounded-full border border-white/10 shadow-2xl pointer-events-auto">
+          <div className="flex">
+            <button 
+              onClick={() => setViewMode('2D')} 
+              className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                viewMode === '2D' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Sơ đồ 2D
+            </button>
+            <button 
+              onClick={() => setViewMode('3D')} 
+              className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                viewMode === '3D' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Digital Twin 3D
+            </button>
+          </div>
+
+          {viewMode === '2D' && (
+            <>
+              <div className="w-[1px] h-4 bg-white/10 mx-1"></div>
+              <div className="flex items-center gap-0.5 pr-1">
+                <button 
+                  onClick={() => transformRef.current?.zoomOut()} 
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                  title="Thu nhỏ bản đồ"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  onClick={() => transformRef.current?.resetTransform()} 
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                  title="Đặt lại bản đồ"
+                >
+                  <Maximize className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  onClick={() => transformRef.current?.zoomIn()} 
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                  title="Phóng to bản đồ"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* User profile dropdown and system buttons */}
+        <div className="flex items-center gap-3 pointer-events-auto">
+          {weather.temp && (
+            <div className="hidden md:flex items-center gap-1.5 bg-white/5 border border-white/5 px-3 py-1.5 rounded-full text-[10px] font-semibold text-slate-300">
+              <span className="text-sky-400 font-bold">{weather.temp}°C</span>
+              <span className="opacity-50">•</span>
+              <span className="capitalize">{weather.desc}</span>
+            </div>
+          )}
+
           <div
-            onClick={() => window.dispatchEvent(new CustomEvent('tsmarthome_open_profile'))}
-            className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full p-1 pr-4 shrink-0 cursor-pointer hover:bg-white/10 transition-colors"
+            onClick={() => handleDockClick('settings')}
+            className="flex items-center gap-2 bg-white/5 border border-white/5 hover:bg-white/10 transition-colors p-1 pr-3 rounded-full cursor-pointer"
+            title="Hồ sơ cá nhân"
           >
-            <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden border border-slate-600 flex items-center justify-center">
+            <div className="w-6 h-6 rounded-full bg-slate-700 overflow-hidden border border-slate-600 flex items-center justify-center">
               <img src={userProfile.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
             </div>
-            <span className="text-sm font-medium">{userProfile.fullName}</span>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
+            <span className="text-[10px] font-bold text-slate-300">{userProfile.fullName}</span>
           </div>
+
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('tsmarthome_open_logout'))}
+            className="p-2.5 bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white transition-all rounded-full border border-rose-500/15 cursor-pointer shadow-md"
+            title="Đăng xuất"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
-      {/* ================= MAIN LAYOUT ================= */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      {/* FLOATING WINDOWS LAYER (pointer-events-none lets clicks fall through to map) */}
+      <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden select-none">
+        
+        {/* App 1: Dashboard App */}
+        <DesktopWindow
+          {...windows.dashboard}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <DashboardApp />
+        </DesktopWindow>
 
-        {/* === CỘT TRÁI: DANH SÁCH THÔNG BÁO LOGS === */}
-        <div className="xl:col-span-2 flex flex-col gap-6">
-          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-6 shadow-2xl flex flex-col h-[600px] xl:h-[calc(100vh-10rem)]">
+        {/* App 2: Devices App */}
+        <DesktopWindow
+          {...windows.devices}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <DevicesListApp onSelectDevice={handleSelectDevice} />
+        </DesktopWindow>
 
-            {/* THANH ĐIỀU HƯỚNG CỦA CARD (XÓA CHỮ VÀ DỜI FILTER SANG TRÁI) */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 shrink-0">
+        {/* App 3: Inspector App */}
+        <DesktopWindow
+          {...windows.inspector}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <DeviceInspectorApp 
+            deviceId={windows.inspector.activeDeviceId} 
+            activeDevice={selectedSensor && selectedSensor.id === windows.inspector.activeDeviceId ? selectedSensor : mapDevices.find(d => d.id === windows.inspector.activeDeviceId)}
+          />
+        </DesktopWindow>
 
-              {/* Filter nằm bên trái */}
-              <div className="relative">
-                <select
-                  value={moduleFilter}
-                  onChange={(e) => handleFilterChange('module', e.target.value)}
-                  className="appearance-none bg-black border border-white/10 text-slate-300 text-sm font-bold rounded-xl pl-4 pr-10 py-2.5 outline-none cursor-pointer focus:border-blue-500 transition-colors w-44"
-                >
-                  <option value="all">Tất cả Module</option>
-                  <option value="radar">Radar</option>
-                  <option value="environment">Môi trường</option>
-                  <option value="safety">An toàn (Lửa/Khí)</option>
-                  <option value="security">An ninh (Cửa/PIR)</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-              </div>
+        {/* App 4: Camera App */}
+        <DesktopWindow
+          {...windows.camera}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <CameraApp />
+        </DesktopWindow>
 
-              {/* Phân trang nằm bên phải */}
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded-xl p-1 shrink-0">
-                  <button
-                    onClick={() => setPage(p => Math.max(0, p - 1))}
-                    disabled={page === 0}
-                    className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
+        {/* App 5: Notifications App */}
+        <DesktopWindow
+          {...windows.notifications}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <NotificationsApp />
+        </DesktopWindow>
 
-                  <span className="text-[11px] font-bold font-mono px-2 text-slate-400">
-                    <strong className="text-blue-400">{page + 1}</strong>/{totalPages}
-                  </span>
+        {/* App 6: Schedules App */}
+        <DesktopWindow
+          {...windows.schedules}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <SchedulesApp />
+        </DesktopWindow>
 
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                    disabled={page >= totalPages - 1}
-                    className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
+        {/* App 7: AI Chat App */}
+        <DesktopWindow
+          {...windows.aiChat}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <AiChatApp />
+        </DesktopWindow>
 
-            {/* List danh sách Logs cuộn bên trong */}
-            <div className="flex-1 overflow-y-auto pr-2 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
-              {logs.length > 0 ? logs.map((log, idx) => {
-                const style = getLogStyle(log);
-                const LogIcon = style.icon;
+        {/* App 8: Settings App */}
+        <DesktopWindow
+          {...windows.settings}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <SettingsApp />
+        </DesktopWindow>
 
-                return (
-                  <div key={log.id || idx} className={`flex items-start gap-4 p-4 rounded-2xl border ${style.border} bg-white/5 hover:bg-white/10 transition-colors cursor-default`}>
-                    <div className={`p-3 rounded-xl shrink-0 ${style.bg}`}>
-                      <LogIcon className={`w-5 h-5 ${style.color}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1 mb-1">
-                        <h4 className="font-bold text-white text-base truncate">{log.deviceName || log.deviceId}</h4>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                          <Clock className="w-3.5 h-3.5" />
-                          {log.time} <span className="text-slate-600 hidden sm:inline">•</span> {log.date}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${style.bg} ${style.color} border ${style.border}`}>
-                          {log.status}
-                        </span>
-                        <span className="text-sm font-medium text-slate-300 bg-black/30 px-3 py-1 rounded-lg border border-white/5">
-                          Payload: <strong className="text-white">{log.value}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500 py-12">
-                  <ShieldCheck className="w-12 h-12 mb-3 opacity-20" />
-                  <p>Không có dữ liệu nào khớp với bộ lọc.</p>
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-
-        {/* === CỘT PHẢI: CAMERA STREAM & THỜI TIẾT === */}
-        <div className="xl:col-span-1 flex flex-col gap-6 xl:h-[calc(100vh-10rem)]">
-          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] shadow-2xl flex flex-col flex-1 min-h-[200px] relative overflow-hidden group">
-            <img
-              src={cameraUrl}
-
-              className="absolute inset-0 w-full h-full object-cover bg-black"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-
-            <div className="absolute inset-0 flex-col items-center justify-center bg-slate-900 hidden">
-              <Wifi className="w-10 h-10 text-slate-600 mb-3 opacity-50" />
-              <p className="text-slate-400 font-bold text-sm">Camera ngoại tuyến</p>
-            </div>
-
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none"></div>
-
-            <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
-              <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_red]"></div>
-                <span className="text-[10px] font-bold tracking-widest uppercase text-white">LIVE</span>
-              </div>
-              <Link to="/security" className="bg-black/50 backdrop-blur-md p-2 rounded-xl border border-white/10 hover:bg-white/20 transition-colors text-white z-10">
-                <Maximize className="w-4 h-4" />
-              </Link>
-            </div>
-
-            <div className="absolute bottom-5 left-5 pointer-events-none">
-              <h3 className="text-lg font-bold text-white mb-0.5">Cửa chính</h3>
-              <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
-                <Video className="w-3 h-3" /> 1600x1200 • 30 FPS
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-[#121212] border border-white/5 rounded-[2.5rem] p-6 flex flex-col gap-5 shadow-2xl relative overflow-hidden shrink-0">
-            <div className="absolute -top-20 -right-20 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div className="flex justify-between items-center relative z-10">
-              <div className="flex items-center gap-3">
-                {weather.icon && <weather.icon className="w-10 h-10 text-sky-400 drop-shadow-[0_0_10px_rgba(56,189,248,0.3)]" />}
-                <div>
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <MapPin className="w-3 h-3 text-sky-400" />
-                    <span className="text-slate-400 font-bold text-[9px] uppercase tracking-widest">Biên Hòa, VN</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-white leading-none">Thời tiết</h3>
-                </div>
-              </div>
-              <div className="text-right">
-                <h1 className="text-4xl font-black tracking-tighter text-white leading-none">{weather.temp}<span className="text-lg text-slate-500 font-normal">°C</span></h1>
-                <p className="text-xs font-medium text-sky-400 capitalize mt-1">{weather.desc}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
-              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wind className={`w-4 h-4 ${weather.aqiColor}`} />
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">AQI</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${weather.aqiBg} ${weather.aqiColor}`}>
-                    {weather.aqiStatus}
-                  </span>
-                  <span className="text-sm font-bold text-white">{weather.aqi}</span>
-                </div>
-              </div>
-
-              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Droplets className="w-4 h-4 text-blue-400" />
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Độ ẩm</span>
-                </div>
-                <span className="text-sm font-bold text-white">{weather.humidity}%</span>
-              </div>
-
-              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sun className={`w-4 h-4 ${weather.uvColor}`} />
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tia UV</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${weather.uvBg} ${weather.uvColor}`}>
-                    {weather.uvStatus}
-                  </span>
-                  <span className="text-sm font-bold text-white">{weather.uv}</span>
-                </div>
-              </div>
-
-              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Thermometer className="w-4 h-4 text-orange-400" />
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Cảm giác</span>
-                </div>
-                <span className="text-sm font-bold text-white">{weather.feelsLike}°C</span>
-              </div>
-
-              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-slate-300" />
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Gió</span>
-                </div>
-                <span className="text-sm font-bold text-white">{weather.windSpeed} <span className="text-[10px] text-slate-500 font-normal">km/h</span></span>
-              </div>
-
-              <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/5 rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CloudRain className="w-4 h-4 text-indigo-400" />
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Mưa</span>
-                </div>
-                <span className="text-sm font-bold text-white">{weather.pop}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* App 9: Admin App */}
+        <DesktopWindow
+          {...windows.admin}
+          onClose={handleWindowClose}
+          onMinimize={handleWindowMinimize}
+          onMaximize={handleWindowMaximize}
+          onPin={handleWindowPin}
+          onFocus={handleWindowFocus}
+          onDrag={handleWindowDrag}
+          onResize={handleWindowResize}
+        >
+          <AdminDashboardApp />
+        </DesktopWindow>
 
       </div>
+
+      {/* DOCK BAR SYSTEM */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/60 backdrop-blur-xl border border-white/10 px-6 py-2.5 rounded-full flex items-center gap-5 shadow-[0_20px_50px_rgba(0,0,0,0.55)] pointer-events-auto select-none">
+        {dockApps.map(app => {
+          const Icon = app.icon;
+          const win = windows[app.id];
+          const isAppOpen = win.isOpen;
+          const isAppMinimized = win.minimized;
+
+          return (
+            <button
+              key={app.id}
+              onClick={() => handleDockClick(app.id)}
+              className="relative p-3 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-2xl transition-all duration-300 hover:scale-125 cursor-pointer outline-none group border border-white/5 hover:border-white/10 active:scale-95 shadow-md flex items-center justify-center"
+            >
+              <Icon className="w-5 h-5" />
+
+              {/* Indicator Dot (macos style) */}
+              {isAppOpen && (
+                <span className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                  isAppMinimized ? 'bg-slate-500 opacity-60' : 'bg-blue-500 animate-pulse'
+                }`}></span>
+              )}
+
+              {/* Tooltip */}
+              <span className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur border border-white/10 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl whitespace-nowrap">
+                {app.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
     </div>
   );
 }
